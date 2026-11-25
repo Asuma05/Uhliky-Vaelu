@@ -1,6 +1,7 @@
+import { getPoiShortLabel, t } from './i18n';
 import type { LightingSystem } from './lighting';
 import type { Player } from './player';
-import type { BiomeKind, ChartedMarker, QuestMapMarker, TileKind } from './types';
+import type { BiomeKind, ChartedMarker, PoiKind, QuestMapMarker, TileKind } from './types';
 import { CHUNK_SIZE, PALETTE, type World, type WorldChunk } from './world';
 
 interface SampledTile {
@@ -152,7 +153,7 @@ interface BakedChunkMeta {
   canvas: HTMLCanvasElement;
   cx: number;
   cy: number;
-  poiLabel: { text: string; x: number; y: number; color: string } | null;
+  poiLabel: { poiId: PoiKind; x: number; y: number; color: string } | null;
 }
 
 export class MapOverlay {
@@ -160,8 +161,12 @@ export class MapOverlay {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly titleEl: HTMLSpanElement;
+  private readonly controlsHintEl: HTMLSpanElement;
   private readonly metaEl: HTMLSpanElement;
   private readonly seedBadgeEl: HTMLSpanElement;
+  private readonly legendEl: HTMLDivElement;
+  private readonly recenterBtn: HTMLButtonElement;
+  private readonly closeBtn: HTMLButtonElement;
 
   private readonly cssW = 620;
   private readonly cssH = 460;
@@ -197,7 +202,6 @@ export class MapOverlay {
     this.root.id = 'map-overlay';
     this.root.className = 'ascii-modal-backdrop hidden';
     this.root.setAttribute('role', 'dialog');
-    this.root.setAttribute('aria-label', 'Mapa světa');
 
     const panel = document.createElement('div');
     panel.className = 'ascii-modal map-modal';
@@ -207,14 +211,15 @@ export class MapOverlay {
     header.innerHTML = `
       <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
       <div class="modal-title-row">
-        <span class="modal-title"><span class="ascii-pipe">|</span> <span id="map-title-text">MAPA SVĚTA (NEKONEČNÁ)</span></span>
-        <span class="modal-close-hint"><span id="map-seed-badge" class="map-seed-badge">SEED: ---</span> · [Tažení] Posun · [Kolečko] Zoom · [M / Esc] <span class="ascii-pipe">|</span></span>
+        <span class="modal-title"><span class="ascii-pipe">|</span> <span id="map-title-text"></span></span>
+        <span class="modal-close-hint"><span id="map-seed-badge" class="map-seed-badge">SEED: ---</span> · <span id="map-controls-hint"></span> <span class="ascii-pipe">|</span></span>
       </div>
       <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
     `;
 
     this.titleEl = header.querySelector('#map-title-text') as HTMLSpanElement;
     this.seedBadgeEl = header.querySelector('#map-seed-badge') as HTMLSpanElement;
+    this.controlsHintEl = header.querySelector('#map-controls-hint') as HTMLSpanElement;
 
     const canvasWrap = document.createElement('div');
     canvasWrap.className = 'map-canvas-wrap';
@@ -239,52 +244,33 @@ export class MapOverlay {
     this.metaEl = document.createElement('span');
     this.metaEl.className = 'map-meta';
 
-    const legend = document.createElement('div');
-    legend.className = 'map-legend';
-    legend.innerHTML = `
-      <span><b class="leg-player">@</b> TY</span>
-      <span><b class="leg-quest">!</b> Úkol</span>
-      <span><b class="leg-wall">#</b> Ruiny</span>
-      <span><b class="leg-path">:</b> Cesty</span>
-      <span><b class="leg-river">~</b> Řeka</span>
-      <span><b class="leg-bridge">=</b> Lávky/Brody</span>
-      <span><b class="leg-tree">T</b> Lesní háj</span>
-      <span><b class="leg-marsh">~</b> Bažina</span>
-      <span><b class="leg-quarry">^</b> Skály</span>
-      <span><b class="leg-ash">.</b> Popel</span>
-      <span><b class="leg-blood">T</b> Krvavý les</span>
-      <span><b class="leg-lava">≈</b> Láva</span>
-      <span><b class="leg-frost">♦</b> Mráz</span>
-      <span><b class="leg-bone">o</b> Bojiště</span>
-      <span><b class="leg-charted">♦</b> Nákres</span>
-    `;
+    this.legendEl = document.createElement('div');
+    this.legendEl.className = 'map-legend';
 
-    const recenterBtn = document.createElement('button');
-    recenterBtn.id = 'map-recenter-btn';
-    recenterBtn.type = 'button';
-    recenterBtn.className = 'ascii-btn ascii-btn-primary';
-    recenterBtn.textContent = '[ Vycentrovat ]';
-    recenterBtn.addEventListener('click', () => {
+    this.recenterBtn = document.createElement('button');
+    this.recenterBtn.id = 'map-recenter-btn';
+    this.recenterBtn.type = 'button';
+    this.recenterBtn.className = 'ascii-btn ascii-btn-primary';
+    this.recenterBtn.addEventListener('click', () => {
       this.centerOn(this.lastPlayerX, this.lastPlayerY);
     });
 
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'ascii-btn';
-    closeBtn.textContent = '[ Zavřít ]';
-    closeBtn.addEventListener('click', onClose);
+    this.closeBtn = document.createElement('button');
+    this.closeBtn.type = 'button';
+    this.closeBtn.className = 'ascii-btn';
+    this.closeBtn.addEventListener('click', onClose);
 
     const footerActions = document.createElement('div');
     footerActions.className = 'map-footer-actions';
-    footerActions.appendChild(recenterBtn);
-    footerActions.appendChild(closeBtn);
+    footerActions.appendChild(this.recenterBtn);
+    footerActions.appendChild(this.closeBtn);
 
     const footerBottom = document.createElement('div');
     footerBottom.className = 'map-footer-row';
     footerBottom.appendChild(this.metaEl);
     footerBottom.appendChild(footerActions);
 
-    footer.appendChild(legend);
+    footer.appendChild(this.legendEl);
     footer.appendChild(footerBottom);
 
     panel.appendChild(header);
@@ -354,12 +340,38 @@ export class MapOverlay {
       if (e.target === this.root) onClose();
     });
 
+    this.applyTranslations();
     this.rebuild(world);
+  }
+
+  public applyTranslations(): void {
+    this.root.setAttribute('aria-label', t('map.aria_label'));
+    this.titleEl.textContent = t('map.title');
+    this.controlsHintEl.textContent = t('map.controls_hint');
+    this.recenterBtn.textContent = t('map.recenter_btn');
+    this.closeBtn.textContent = t('map.close_btn');
+    this.legendEl.innerHTML = `
+      <span><b class="leg-player">@</b> ${t('map.legend.you')}</span>
+      <span><b class="leg-quest">!</b> ${t('map.legend.quest')}</span>
+      <span><b class="leg-wall">#</b> ${t('map.legend.ruins')}</span>
+      <span><b class="leg-path">:</b> ${t('map.legend.roads')}</span>
+      <span><b class="leg-river">~</b> ${t('map.legend.river')}</span>
+      <span><b class="leg-bridge">=</b> ${t('map.legend.bridges')}</span>
+      <span><b class="leg-tree">T</b> ${t('map.legend.grove')}</span>
+      <span><b class="leg-marsh">~</b> ${t('map.legend.marsh')}</span>
+      <span><b class="leg-quarry">^</b> ${t('map.legend.rocks')}</span>
+      <span><b class="leg-ash">.</b> ${t('map.legend.ash')}</span>
+      <span><b class="leg-blood">T</b> ${t('map.legend.bloodwood')}</span>
+      <span><b class="leg-lava">≈</b> ${t('map.legend.lava')}</span>
+      <span><b class="leg-frost">♦</b> ${t('map.legend.frost')}</span>
+      <span><b class="leg-bone">o</b> ${t('map.legend.bones')}</span>
+      <span><b class="leg-charted">♦</b> ${t('map.legend.sketch')}</span>
+    `;
   }
 
   public rebuild(world: World): void {
     this.chunkCache.clear();
-    this.titleEl.textContent = `MAPA SVĚTA (NEKONEČNÁ)`;
+    this.titleEl.textContent = t('map.title');
     this.seedBadgeEl.textContent = `SEED: ${world.seed}`;
     this.centerOn(world.spawnPoint.x, world.spawnPoint.y);
   }
@@ -471,7 +483,7 @@ export class MapOverlay {
     if (chunk.poi) {
       const p = chunk.poi;
       poiLabel = {
-        text: p.shortLabel,
+        poiId: p.id,
         x: p.x,
         y: p.y - p.radiusY - 3,
         color:
@@ -489,7 +501,7 @@ export class MapOverlay {
       };
     } else if (chunk.cx === 0 && chunk.cy === 0) {
       poiLabel = {
-        text: 'ÚTOČIŠTĚ',
+        poiId: 'shelter',
         x: 0,
         y: -11,
         color: '#e8d094',
@@ -602,13 +614,14 @@ export class MapOverlay {
     ctx.textAlign = 'center';
     for (let i = 0; i < visiblePoiLabels.length; i++) {
       const lbl = visiblePoiLabels[i];
+      const text = getPoiShortLabel(lbl.poiId);
       const lx = worldToScreenX(lbl.x);
       const ly = worldToScreenY(lbl.y);
-      const w = ctx.measureText(lbl.text).width;
+      const w = ctx.measureText(text).width;
       ctx.fillStyle = 'rgba(9, 9, 11, 0.86)';
       ctx.fillRect(lx - w * 0.5 - 3, ly - 1, w + 6, 11);
       ctx.fillStyle = lbl.color;
-      ctx.fillText(lbl.text, lx, ly);
+      ctx.fillText(text, lx, ly);
     }
 
     // 4. Draw Quest Markers (visible even far in unexplored fog or pinned to viewport border!)
@@ -669,6 +682,7 @@ export class MapOverlay {
 
       for (let i = 0; i < chartedMarkers.length; i++) {
         const cm = chartedMarkers[i];
+        const cmLabel = getPoiShortLabel(cm.poiId);
         const rawX = worldToScreenX(cm.x);
         const rawY = worldToScreenY(cm.y);
         const inView =
@@ -690,11 +704,11 @@ export class MapOverlay {
           ctx.fillText(badge, rawX - tw * 0.5, rawY);
 
           ctx.font = "600 8px 'JetBrains Mono', 'Consolas', monospace";
-          const lw = ctx.measureText(cm.label).width;
+          const lw = ctx.measureText(cmLabel).width;
           ctx.fillStyle = 'rgba(9, 9, 11, 0.88)';
           ctx.fillRect(rawX - lw * 0.5 - 3, rawY + 8, lw + 6, 10);
           ctx.fillStyle = color;
-          ctx.fillText(cm.label, rawX - lw * 0.5, rawY + 13);
+          ctx.fillText(cmLabel, rawX - lw * 0.5, rawY + 13);
           ctx.font = "700 9px 'JetBrains Mono', 'Consolas', monospace";
         } else {
           const ex = Math.max(24, Math.min(this.cssW - 24, rawX));
@@ -748,7 +762,13 @@ export class MapOverlay {
 
     const zone = world.getZoneName(player.x, player.y);
     const chunksCount = lighting.getExploredChunkCount();
-    this.metaEl.textContent = `Pozice: ${Math.round(player.x)},${Math.round(player.y)} · ${zone} · Prozkoumáno: ${chunksCount} chunků · Zoom: ${this.mapZoom.toFixed(2)}×`;
+    this.metaEl.textContent = t('map.meta', {
+      x: Math.round(player.x),
+      y: Math.round(player.y),
+      zone,
+      chunks: chunksCount,
+      zoom: this.mapZoom.toFixed(2),
+    });
   }
 
   public dispose(): void {

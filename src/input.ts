@@ -33,6 +33,7 @@ export interface InputCallbacks {
   onModalConfirm: () => void;
   onModalQuickChoice: (index: number) => void;
   onMenuNavigate: (delta: number) => void;
+  onMenuHorizontal?: (delta: number) => void;
   onMenuConfirm: () => void;
   isModalOpen: () => boolean;
   isListModalOpen: () => boolean;
@@ -224,6 +225,16 @@ export class InputManager {
       if (event.code === 'ArrowDown' || event.code === 'KeyS') {
         event.preventDefault();
         this.callbacks.onMenuNavigate(1);
+        return;
+      }
+      if (!event.repeat && (event.code === 'ArrowLeft' || event.code === 'KeyA')) {
+        event.preventDefault();
+        this.callbacks.onMenuHorizontal?.(-1);
+        return;
+      }
+      if (!event.repeat && (event.code === 'ArrowRight' || event.code === 'KeyD')) {
+        event.preventDefault();
+        this.callbacks.onMenuHorizontal?.(1);
         return;
       }
       if (!event.repeat && (event.code === 'Enter' || event.code === 'Space')) {

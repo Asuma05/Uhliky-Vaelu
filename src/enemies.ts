@@ -1,3 +1,4 @@
+import { getEnemyDisplayName } from './i18n';
 import type { Player } from './player';
 import { hashSeedToUint32 } from './save';
 import type {
@@ -262,14 +263,15 @@ function createScaledConfig(
   kind: EnemyKind,
   tier: number,
   isBoss = false,
-  bossName?: string,
+  bossPoiId?: PoiKind,
   archetype?: CityBossArchetype
 ): EnemyConfig {
   const clampedTier = Math.max(1, Math.min(6, tier));
+  const displayName = getEnemyDisplayName({ kind, tier: clampedTier, isBoss, bossPoiId, archetype });
   if (archetype === 'iron_founder') {
     return {
       kind: 'skeleton',
-      name: bossName ?? 'Železný slévač',
+      name: displayName,
       maxHp: 240,
       patrolSpeed: 3.8,
       chaseSpeed: 9.5,
@@ -285,7 +287,7 @@ function createScaledConfig(
   if (archetype === 'mire_alchemist') {
     return {
       kind: 'ghoul',
-      name: bossName ?? 'Alchymista z hlubin',
+      name: displayName,
       maxHp: 190,
       patrolSpeed: 4.8,
       chaseSpeed: 15.2,
@@ -301,7 +303,7 @@ function createScaledConfig(
   if (archetype === 'last_inquisitor') {
     return {
       kind: 'skeleton',
-      name: bossName ?? 'Poslední inkvizitor',
+      name: displayName,
       maxHp: 215,
       patrolSpeed: 4.6,
       chaseSpeed: 14.4,
@@ -320,7 +322,7 @@ function createScaledConfig(
     if (kind === 'ghoul') {
       return {
         kind: 'ghoul',
-        name: bossName ?? 'Prastarý ghúl',
+        name: displayName,
         maxHp: Math.round(145 * bossScale),
         patrolSpeed: 4.5,
         chaseSpeed: 15.2,
@@ -335,7 +337,7 @@ function createScaledConfig(
     }
     return {
       kind: 'skeleton',
-      name: bossName ?? 'Pán popela',
+      name: displayName,
       maxHp: Math.round(185 * bossScale),
       patrolSpeed: 4.2,
       chaseSpeed: 10.6,
@@ -357,7 +359,7 @@ function createScaledConfig(
   if (kind === 'ghoul') {
     return {
       kind: 'ghoul',
-      name: elite ? 'Krvežíznivý ghúl' : veteran ? 'Krvavý ghúl' : 'Ghúl',
+      name: displayName,
       maxHp: Math.round(42 * hpMult),
       patrolSpeed: 5.5,
       chaseSpeed: elite ? 16.4 : veteran ? 15.4 : 14.2,
@@ -373,7 +375,7 @@ function createScaledConfig(
 
   return {
     kind: 'skeleton',
-    name: elite ? 'Rytíř popela' : veteran ? 'Prastarý kostlivec' : 'Kostlivec',
+    name: displayName,
     maxHp: Math.round(82 * hpMult),
     patrolSpeed: 4.0,
     chaseSpeed: elite ? 11.0 : veteran ? 10.2 : 9.2,
@@ -415,7 +417,6 @@ export class Enemy {
   public readonly archetype?: CityBossArchetype;
   public readonly bossPoiId?: PoiKind;
   public readonly bossPoiUid?: string;
-  public readonly name: string;
   public readonly config: EnemyConfig;
 
   public x: number;
@@ -472,8 +473,7 @@ export class Enemy {
     this.archetype = bossSpec?.archetype;
     this.bossPoiId = bossSpec?.poiId;
     this.bossPoiUid = bossSpec?.poiUid;
-    this.config = createScaledConfig(kind, tier, this.isBoss, bossSpec?.name, bossSpec?.archetype);
-    this.name = this.config.name;
+    this.config = createScaledConfig(kind, tier, this.isBoss, bossSpec?.poiId, bossSpec?.archetype);
     this.x = spawnX;
     this.y = spawnY;
     this.homeX = spawnX;
@@ -482,6 +482,16 @@ export class Enemy {
     this.maxHp = this.config.maxHp;
     this.patrolTarget = { x: spawnX, y: spawnY };
     this.patrolPauseTimer = 0.4 + ((this.seedNum * 0.73) % 1.4);
+  }
+
+  public get name(): string {
+    return getEnemyDisplayName({
+      kind: this.kind,
+      tier: this.tier,
+      isBoss: this.isBoss,
+      bossPoiId: this.bossPoiId,
+      archetype: this.archetype,
+    });
   }
 
   public getHitboxAt(x = this.x, y = this.y): RectBounds {

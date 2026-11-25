@@ -1,4 +1,5 @@
 import type { Enemy } from './enemies';
+import { getBossTitle, getItemDescription, getItemName, getPoiName, t } from './i18n';
 import type { Inventory } from './inventory';
 import type { Player } from './player';
 import type {
@@ -15,44 +16,24 @@ import type {
 } from './types';
 import { compassDir, createRng, type World } from './world';
 
-const BOSS_TITLES: Record<PoiKind, { name: string; kind: EnemyKind }> = {
-  shelter: { name: 'Strážce mýtiny', kind: 'skeleton' },
-  cathedral: { name: 'Kněz popela', kind: 'skeleton' },
-  fortress: { name: 'Pán rozvalin', kind: 'skeleton' },
-  graveyard: { name: 'Strážce krypty', kind: 'skeleton' },
-  village: { name: 'Utopený netvor', kind: 'ghoul' },
-  watchtower: { name: 'Kapitán hlídky', kind: 'skeleton' },
-  abbey_crypt: { name: 'Opat z kostí', kind: 'skeleton' },
-  cave: { name: 'Hlídač sluje', kind: 'ghoul' },
-  city_kaelvarr: { name: 'Železný slévač', kind: 'skeleton' },
-  city_siltmoor: { name: 'Alchymista z hlubin', kind: 'ghoul' },
-  city_aethelgard: { name: 'Poslední inkvizitor', kind: 'skeleton' },
+const BOSS_KINDS: Record<PoiKind, EnemyKind> = {
+  shelter: 'skeleton',
+  cathedral: 'skeleton',
+  fortress: 'skeleton',
+  graveyard: 'skeleton',
+  village: 'ghoul',
+  watchtower: 'skeleton',
+  abbey_crypt: 'skeleton',
+  cave: 'ghoul',
+  city_kaelvarr: 'skeleton',
+  city_siltmoor: 'ghoul',
+  city_aethelgard: 'skeleton',
 };
 
-const RELIC_TEMPLATES: readonly {
-  id: string;
-  name: string;
-  color: string;
-  description: string;
-}[] = [
-  {
-    id: 'relic-chalice',
-    name: 'Popelavý kalich',
-    color: '#f0c465',
-    description: 'Zčernalý obřadní kalich vytepaný ze starého zlata. V jeho středu doutná studený popel.',
-  },
-  {
-    id: 'relic-key',
-    name: 'Zrezivělý klíč od krypty',
-    color: '#8edce8',
-    description: 'Těžký železný klíč pokrytý modravou rzí a runami dávné stráže pohraničí.',
-  },
-  {
-    id: 'relic-medallion',
-    name: 'Stříbrný medailon',
-    color: '#d7bdf0',
-    description: 'Zašlý medailon s vyrytým znakem luny, jenž tiše světélkuje i v hluboké tmě.',
-  },
+const RELIC_SPECS: readonly { id: string; color: string }[] = [
+  { id: 'relic-chalice', color: '#f0c465' },
+  { id: 'relic-key', color: '#8edce8' },
+  { id: 'relic-medallion', color: '#d7bdf0' },
 ];
 
 const REWARD_TEMPLATES: {
@@ -137,7 +118,7 @@ export class QuestManager {
       shuffled[j] = tmp;
     }
 
-    // 1. Main Quest: Očištění prokletých míst (prefer 3 distinct POI kinds)
+    // 1. Main Quest: Cleanse the Cursed Sites (prefer 3 distinct POI kinds)
     const cleansePois: PointOfInterest[] = [];
     const seenKinds = new Set<PoiKind>();
     for (const p of shuffled) {
@@ -156,15 +137,16 @@ export class QuestManager {
 
     const cleanseObjectives: QuestObjective[] = [];
     for (const poi of cleansePois) {
-      const bossTemplate = BOSS_TITLES[poi.id];
+      const bossName = getBossTitle(poi.id);
+      const poiName = getPoiName(poi.id);
       const spawnX = poi.x + Math.round((rng() - 0.5) * 2);
       const spawnY = poi.y + Math.round((rng() - 0.5) * 2);
       this.bossSpecs.push({
         poiUid: poi.uid,
         poiId: poi.id,
-        poiName: poi.name,
-        bossName: bossTemplate.name,
-        kind: bossTemplate.kind,
+        poiName,
+        bossName,
+        kind: BOSS_KINDS[poi.id],
         chunkX: poi.chunkX,
         chunkY: poi.chunkY,
         x: spawnX,
@@ -173,7 +155,7 @@ export class QuestManager {
 
       cleanseObjectives.push({
         id: `boss-${poi.uid}`,
-        label: `${bossTemplate.name} (${poi.name})`,
+        label: `${bossName} (${poiName})`,
         current: 0,
         target: 1,
         poiUid: poi.uid,
@@ -184,51 +166,53 @@ export class QuestManager {
       });
     }
 
-    const poiNamesText = cleansePois.map((p) => p.name).join(', ');
+    const poiNamesText = cleansePois.map((p) => getPoiName(p.id)).join(', ');
     this.quests.push({
       id: 'cleanse-cursed',
       kind: 'cleanse',
-      title: 'Očištění prokletých míst',
-      giverQuote:
-        '„Temnota se probudila v dalekých rozvalinách. Pokud nepadnou jejich strážci, mlha pohltí i toto útočiště.“',
-      description: `Vypátrej a poraz prastaré strážce (mini-bosse) v těchto třech vzdálených lokacích (250–600 buněk od startu): ${poiNamesText}.`,
-      rewardSummary: 'Ocelový meč strážce (+10 útok), +25 Max HP, 2× Karmínový odvar',
+      title: t('quest.cleanse.title'),
+      giverQuote: t('quest.cleanse.quote'),
+      description: t('quest.cleanse.desc', { pois: poiNamesText }),
+      rewardSummary: t('quest.cleanse.reward'),
       status: 'available',
       completionCount: 0,
       objectives: cleanseObjectives,
     });
 
-    // 2. Exploration Quest: Zapomenuté relikvie (3 glowing collectible relics across distinct POIs)
+    // 2. Exploration Quest: Forgotten Relics (3 glowing collectible relics across distinct POIs)
     const remainingPois = shuffled.filter((p) => !cleansePois.some((c) => c.uid === p.uid));
     const relicPool = remainingPois.length >= 3 ? remainingPois : shuffled;
     const relicPois: PointOfInterest[] = [];
-    for (let i = 0; i < RELIC_TEMPLATES.length && relicPool.length > 0; i++) {
+    for (let i = 0; i < RELIC_SPECS.length && relicPool.length > 0; i++) {
       relicPois.push(relicPool[i % relicPool.length]);
     }
 
     const relicObjectives: QuestObjective[] = [];
     for (let i = 0; i < relicPois.length; i++) {
       const poi = relicPois[i];
-      const tpl = RELIC_TEMPLATES[i];
+      const spec = RELIC_SPECS[i];
+      const relicName = getItemName({ id: spec.id, name: spec.id });
+      const relicDesc = getItemDescription({ id: spec.id, description: '' });
+      const poiName = getPoiName(poi.id);
       // Guaranteed 5x5 open sanctuary around (poi.x, poi.y) ensures safe collectible placement
       const rx = poi.x + (i % 2 === 0 ? 1.5 : -1.5);
       const ry = poi.y + 1.5;
 
       this.relics.push({
-        id: tpl.id,
-        name: tpl.name,
+        id: spec.id,
+        name: relicName,
         poiUid: poi.uid,
         poiId: poi.id,
         x: rx,
         y: ry,
-        color: tpl.color,
-        description: tpl.description,
+        color: spec.color,
+        description: relicDesc,
         collected: false,
       });
 
       relicObjectives.push({
-        id: tpl.id,
-        label: `${tpl.name} (${poi.name})`,
+        id: spec.id,
+        label: `${relicName} (${poiName})`,
         current: 0,
         target: 1,
         poiUid: poi.uid,
@@ -242,39 +226,93 @@ export class QuestManager {
     this.quests.push({
       id: 'forgotten-relics',
       kind: 'relics',
-      title: 'Zapomenuté relikvie',
-      giverQuote:
-        '„Poutníci před tebou ztratili v troskách tři posvátné předměty. Jejich slabá záře stále volá z temnoty.“',
-      description:
-        'Prohledej označené lokace, najdi tři zářící relikvie (*) a posbírej je pomocí klávesy [E].',
-      rewardSummary: '+25 Max Stamina, 3× Olej do lucerny, 2× Karmínový odvar',
+      title: t('quest.relics.title'),
+      giverQuote: t('quest.relics.quote'),
+      description: t('quest.relics.desc'),
+      rewardSummary: t('quest.relics.reward'),
       status: 'available',
       completionCount: 0,
       objectives: relicObjectives,
     });
 
-    // 3. Repeatable Hunting Contract: Lovecký kontrakt
+    // 3. Repeatable Hunting Contract
     this.quests.push({
       id: 'hunt-contract',
       kind: 'hunt',
-      title: 'Lovecký kontrakt',
-      giverQuote:
-        '„Okolní stezky se hemží nemrtvými. Každý padlý ghúl či kostlivec znamená bezpečnější noc pro poutníky.“',
-      description: 'Vyraz do pohraničí a pobij 5 nepřátel (ghúlů nebo kostlivců), poté se vrať pro odměnu.',
-      rewardSummary: '2× Karmínový odvar, 2× Olej do lucerny (+5 Max HP poprvé)',
+      title: t('quest.hunt.title'),
+      giverQuote: t('quest.hunt.quote'),
+      description: t('quest.hunt.desc_any'),
+      rewardSummary: t('quest.hunt.reward_first'),
       status: 'available',
       repeatable: true,
       completionCount: 0,
       objectives: [
         {
           id: 'hunt-any',
-          label: 'Zabij nepřátele v pohraničí',
+          label: t('quest.hunt.obj_any'),
           current: 0,
           target: 5,
           done: false,
         },
       ],
     });
+  }
+
+  /** Re-applies localized text to all quests, objectives, relics, and boss specs in place */
+  public refreshLocalization(): void {
+    for (const spec of this.bossSpecs) {
+      spec.poiName = getPoiName(spec.poiId);
+      spec.bossName = getBossTitle(spec.poiId);
+    }
+
+    for (const relic of this.relics) {
+      relic.name = getItemName({ id: relic.id, name: relic.name });
+      relic.description = getItemDescription({ id: relic.id, description: relic.description });
+    }
+
+    for (const q of this.quests) {
+      if (q.id === 'cleanse-cursed') {
+        q.title = t('quest.cleanse.title');
+        q.giverQuote = t('quest.cleanse.quote');
+        const poiNames = q.objectives
+          .map((o) => (o.poiId ? getPoiName(o.poiId) : ''))
+          .filter((s) => s.length > 0)
+          .join(', ');
+        q.description = t('quest.cleanse.desc', { pois: poiNames });
+        q.rewardSummary = t('quest.cleanse.reward');
+        for (const o of q.objectives) {
+          if (o.poiId) {
+            o.label = `${getBossTitle(o.poiId)} (${getPoiName(o.poiId)})`;
+          }
+        }
+      } else if (q.id === 'forgotten-relics') {
+        q.title = t('quest.relics.title');
+        q.giverQuote = t('quest.relics.quote');
+        q.description = t('quest.relics.desc');
+        q.rewardSummary = t('quest.relics.reward');
+        for (const o of q.objectives) {
+          const rName = getItemName({ id: o.id, name: o.id });
+          const pName = o.poiId ? getPoiName(o.poiId) : '';
+          o.label = pName ? `${rName} (${pName})` : rName;
+        }
+      } else if (q.id === 'hunt-contract') {
+        q.title = t('quest.hunt.title');
+        q.giverQuote = t('quest.hunt.quote');
+        const obj = q.objectives[0];
+        if (obj?.id === 'hunt-ghoul') {
+          obj.label = t('quest.hunt.obj_ghoul');
+          q.description = t('quest.hunt.desc_ghoul');
+        } else if (obj?.id === 'hunt-skeleton') {
+          obj.label = t('quest.hunt.obj_skeleton');
+          q.description = t('quest.hunt.desc_skeleton');
+        } else if (obj) {
+          obj.label = t('quest.hunt.obj_any');
+          q.description = t('quest.hunt.desc_any');
+        }
+        q.rewardSummary =
+          q.completionCount === 0 ? t('quest.hunt.reward_first') : t('quest.hunt.reward_repeat');
+      }
+    }
   }
 
   public getQuests(): readonly QuestEntry[] {
@@ -316,10 +354,10 @@ export class QuestManager {
   public acceptQuest(id: string): { ok: boolean; message: string } {
     const quest = this.quests.find((q) => q.id === id);
     if (!quest) {
-      return { ok: false, message: 'Úkol nebyl nalezen.' };
+      return { ok: false, message: t('quest.msg.not_found') };
     }
     if (quest.status !== 'available') {
-      return { ok: false, message: 'Tento úkol již byl přijat nebo dokončen.' };
+      return { ok: false, message: t('quest.msg.already_accepted') };
     }
 
     const allDone = quest.objectives.every((o) => o.done);
@@ -329,8 +367,8 @@ export class QuestManager {
     return {
       ok: true,
       message: allDone
-        ? `Úkol přijat a připraven k odevzdání: ${quest.title}!`
-        : `Přijal jsi úkol: ${quest.title}.`,
+        ? t('quest.msg.accepted_ready', { title: quest.title })
+        : t('quest.msg.accepted', { title: quest.title }),
     };
   }
 
@@ -341,7 +379,7 @@ export class QuestManager {
   ): { ok: boolean; message: string } {
     const quest = this.quests.find((q) => q.id === id);
     if (!quest || quest.status !== 'ready') {
-      return { ok: false, message: 'Cíle tohoto úkolu ještě nejsou splněny.' };
+      return { ok: false, message: t('quest.msg.not_ready') };
     }
 
     let rewardLog = '';
@@ -349,21 +387,21 @@ export class QuestManager {
       inventory.addItem(REWARD_TEMPLATES.guardSword, 1);
       inventory.addItem(REWARD_TEMPLATES.crimsonDraught, 2);
       player.upgradeMaxHp(25);
-      rewardLog = 'Odměna: Ocelový meč strážce (+10), +25 Max HP, 2× Karmínový odvar.';
+      rewardLog = t('quest.cleanse.reward_log');
     } else if (quest.id === 'forgotten-relics') {
       inventory.addItem(REWARD_TEMPLATES.oilFlask, 3);
       inventory.addItem(REWARD_TEMPLATES.crimsonDraught, 2);
       player.upgradeMaxStamina(25);
-      rewardLog = 'Odměna: +25 Max Stamina, 3× Olej do lucerny, 2× Karmínový odvar.';
+      rewardLog = t('quest.relics.reward_log');
     } else if (quest.id === 'hunt-contract') {
       inventory.addItem(REWARD_TEMPLATES.crimsonDraught, 2);
       inventory.addItem(REWARD_TEMPLATES.oilFlask, 2);
       if (quest.completionCount === 0) {
         player.upgradeMaxHp(5);
-        rewardLog = 'Odměna: +5 Max HP, 2× Karmínový odvar, 2× Olej do lucerny.';
+        rewardLog = t('quest.hunt.reward_log_first');
       } else {
         player.heal(20);
-        rewardLog = 'Odměna: 2× Karmínový odvar, 2× Olej do lucerny (+20 HP).';
+        rewardLog = t('quest.hunt.reward_log_repeat');
       }
     }
 
@@ -378,19 +416,12 @@ export class QuestManager {
       obj.done = false;
       if (cycle === 1) {
         obj.id = 'hunt-ghoul';
-        obj.label = 'Zabij 5 ghúlů v pohraničí';
-        quest.description = 'Vyraz do okolí hřbitova či vesnice a zneškodni 5 rychlých ghúlů.';
       } else if (cycle === 2) {
         obj.id = 'hunt-skeleton';
-        obj.label = 'Zabij 5 kostlivců v pohraničí';
-        quest.description = 'Vydej se do ruin a rozdrť 5 kostlivých strážců.';
       } else {
         obj.id = 'hunt-any';
-        obj.label = 'Zabij nepřátele v pohraničí';
-        quest.description =
-          'Vyraz do pohraničí a pobij 5 nepřátel (ghúlů nebo kostlivců), poté se vrať pro odměnu.';
       }
-      quest.rewardSummary = '2× Karmínový odvar, 2× Olej do lucerny (+20 HP)';
+      this.refreshLocalization();
     } else {
       quest.status = 'completed';
     }
@@ -402,7 +433,7 @@ export class QuestManager {
 
     return {
       ok: true,
-      message: `Úkol splněn! ${rewardLog}`,
+      message: t('quest.msg.completed', { rewardLog }),
     };
   }
 
@@ -429,7 +460,7 @@ export class QuestManager {
           if (allDone) {
             cleanse.status = 'ready';
             becameReady = true;
-            toast = `Úkol připraven k odevzdání: ${cleanse.title}!`;
+            toast = t('quest.msg.ready_toast', { title: cleanse.title });
           } else {
             toast = `${cleanse.title}: ${doneCount}/${cleanse.objectives.length}`;
           }
@@ -452,7 +483,7 @@ export class QuestManager {
           obj.done = true;
           hunt.status = 'ready';
           becameReady = true;
-          toast = `Úkol připraven k odevzdání: ${hunt.title}!`;
+          toast = t('quest.msg.ready_toast', { title: hunt.title });
         } else if (!toast) {
           toast = `${hunt.title}: ${obj.current}/${obj.target}`;
         }
@@ -482,16 +513,19 @@ export class QuestManager {
     }
     relic.collected = true;
 
+    const relicName = getItemName({ id: relic.id, name: relic.name });
+    const relicDesc = getItemDescription({ id: relic.id, description: relic.description });
+
     inventory.addItem(
       {
         id: relic.id,
-        name: relic.name,
+        name: relicName,
         symbol: '*',
         category: 'loot',
-        categoryLabel: 'Relikvie',
-        description: relic.description,
-        effectText: 'Úkolový předmět — odevzdej u úkolové tabule na startovní mýtině',
-        actionLabel: 'Prohlédnout',
+        categoryLabel: t('stats.buff_relic_meta'),
+        description: relicDesc,
+        effectText: t('item.relic-chalice.effect'),
+        actionLabel: t('inv.action.inspect'),
       },
       1
     );
@@ -511,13 +545,17 @@ export class QuestManager {
       }
       return {
         message: questReady
-          ? `Sebrána relikvie: ${relic.name} — vrať se k úkolové tabuli!`
-          : `Sebrána relikvie: ${relic.name} (${doneCount}/${relicQuest.objectives.length})`,
+          ? t('quest.msg.relic_collected_ready', { name: relicName })
+          : t('quest.msg.relic_collected_prog', {
+              name: relicName,
+              done: doneCount,
+              total: relicQuest.objectives.length,
+            }),
         questReady,
       };
     }
 
-    return { message: `Sebrána relikvie: ${relic.name}`, questReady: false };
+    return { message: t('quest.msg.relic_collected', { name: relicName }), questReady: false };
   }
 
   /** Returns target markers for highlighting active/ready quests on the World Map (M) */
@@ -537,11 +575,11 @@ export class QuestManager {
         const obj = q.objectives[j];
         if (obj.done || obj.targetX === undefined || obj.targetY === undefined) continue;
 
-        const match = /\(([^)]+)\)/.exec(obj.label);
+        const poiLabel = obj.poiId ? getPoiName(obj.poiId) : obj.label;
         markers.push({
           x: obj.targetX,
           y: obj.targetY,
-          label: match ? match[1] : obj.label,
+          label: poiLabel,
           isTurnIn: false,
         });
       }
@@ -551,7 +589,7 @@ export class QuestManager {
       markers.push({
         x: world.questGiver.x,
         y: world.questGiver.y,
-        label: 'ODEVZDAT',
+        label: t('quest.map_turn_in'),
         isTurnIn: true,
       });
     }
@@ -571,8 +609,11 @@ export class QuestManager {
       );
       return {
         title: quest.title,
-        progressLine: 'Splněno · Odevzdej u tabule [!]',
-        navLine: dist <= 5 ? 'Útočiště (u tabule [E])' : `Směr: ${dir} · ~${dist} buněk`,
+        progressLine: t('quest.tracker.ready_prog'),
+        navLine:
+          dist <= 5
+            ? t('quest.tracker.ready_near')
+            : t('quest.tracker.ready_dir', { dir, dist }),
         isReady: true,
       };
     }
@@ -582,7 +623,7 @@ export class QuestManager {
       return {
         title: quest.title,
         progressLine: `${obj.label}: ${obj.current}/${obj.target}`,
-        navLine: 'Pohraničí a prokleté lokace',
+        navLine: t('quest.tracker.hunt_nav'),
         isReady: false,
       };
     }
@@ -605,21 +646,23 @@ export class QuestManager {
     if (!nearestObj || nearestObj.targetX === undefined || nearestObj.targetY === undefined) {
       return {
         title: quest.title,
-        progressLine: `Postup: ${doneCount}/${quest.objectives.length}`,
-        navLine: 'Odevzdej u úkolové tabule',
+        progressLine: t('quest.tracker.fallback_prog', {
+          done: doneCount,
+          total: quest.objectives.length,
+        }),
+        navLine: t('quest.tracker.fallback_nav'),
         isReady: false,
       };
     }
 
-    const match = /\(([^)]+)\)/.exec(nearestObj.label);
-    const targetName = match ? match[1] : nearestObj.label;
+    const targetName = nearestObj.poiId ? getPoiName(nearestObj.poiId) : nearestObj.label;
     const dir = compassDir(playerX, playerY, nearestObj.targetX, nearestObj.targetY);
     const dist = Math.round(nearestDist);
 
     return {
       title: quest.title,
       progressLine: `${targetName}: ${doneCount}/${quest.objectives.length}`,
-      navLine: `Cíl: ${dir} · ~${dist} buněk`,
+      navLine: t('quest.tracker.target_nav', { dir, dist }),
       isReady: false,
     };
   }
@@ -678,31 +721,29 @@ export class QuestManager {
       targetQ.status = savedQ.status;
       targetQ.completionCount = savedQ.completionCount ?? 0;
 
-      // Keep repeatable hunt objective text matching restored completionCount
+      // Keep repeatable hunt objective id matching restored completionCount
       if (targetQ.id === 'hunt-contract' && targetQ.completionCount > 0) {
         const cycle = targetQ.completionCount % 3;
         const obj = targetQ.objectives[0];
         if (cycle === 1) {
           obj.id = 'hunt-ghoul';
-          obj.label = 'Zabij 5 ghúlů v pohraničí';
         } else if (cycle === 2) {
           obj.id = 'hunt-skeleton';
-          obj.label = 'Zabij 5 kostlivců v pohraničí';
+        } else {
+          obj.id = 'hunt-any';
         }
       }
 
       for (const savedObj of savedQ.objectives ?? []) {
         const targetObj = targetQ.objectives.find((o) => o.id === savedObj.id) ?? targetQ.objectives[0];
-        if (targetObj && targetQ.id !== 'hunt-contract') {
-          targetObj.current = savedObj.current;
-          targetObj.done = savedObj.done;
-        } else if (targetObj && targetQ.id === 'hunt-contract') {
+        if (targetObj) {
           targetObj.current = savedObj.current;
           targetObj.done = savedObj.done;
         }
       }
     }
 
+    this.refreshLocalization();
     this.trackedQuestId = data.trackedQuestId ?? null;
     this.getTrackedQuest();
   }

@@ -1,3 +1,12 @@
+import {
+  getBiomeName,
+  getBossTitle,
+  getPoiName,
+  getPoiShortLabel,
+  getTravelerName,
+  getTravelerTitle,
+  t,
+} from './i18n';
 import { hashSeedToUint32, normalizeSeed } from './save';
 import type {
   BiomeKind,
@@ -280,117 +289,49 @@ class SimplexNoise2D {
   }
 }
 
-/** 8-way Czech compass abbreviation pointing from (ax, ay) to (bx, by) */
+/** 8-way localized compass abbreviation pointing from (ax, ay) to (bx, by) */
 export function compassDir(ax: number, ay: number, bx: number, by: number): string {
   const angle = Math.atan2(by - ay, bx - ax); // 0 = East, -PI/2 = North
   const oct = Math.round(angle / (Math.PI / 4));
   switch (((oct % 8) + 8) % 8) {
     case 0:
-      return 'V';
+      return t('compass.e');
     case 1:
-      return 'JV';
+      return t('compass.se');
     case 2:
-      return 'J';
+      return t('compass.s');
     case 3:
-      return 'JZ';
+      return t('compass.sw');
     case 4:
-      return 'Z';
+      return t('compass.w');
     case 5:
-      return 'SZ';
+      return t('compass.nw');
     case 6:
-      return 'S';
+      return t('compass.n');
     case 7:
     default:
-      return 'SV';
+      return t('compass.ne');
   }
 }
 
 interface PoiSpecTemplate {
   id: PoiKind;
-  name: string;
-  shortLabel: string;
   rx: number;
   ry: number;
 }
 
 const POI_TEMPLATES: Record<PoiKind, PoiSpecTemplate> = {
-  shelter: {
-    id: 'shelter',
-    name: 'Startovní útočiště',
-    shortLabel: 'ÚTOČIŠTĚ',
-    rx: 10,
-    ry: 8,
-  },
-  cathedral: {
-    id: 'cathedral',
-    name: 'Znesvěcená katedrála',
-    shortLabel: 'KATEDRÁLA',
-    rx: 16,
-    ry: 14,
-  },
-  fortress: {
-    id: 'fortress',
-    name: 'Rozvaliny tvrze',
-    shortLabel: 'TVRZ',
-    rx: 18,
-    ry: 15,
-  },
-  graveyard: {
-    id: 'graveyard',
-    name: 'Hřbitov',
-    shortLabel: 'HŘBITOV',
-    rx: 16,
-    ry: 13,
-  },
-  village: {
-    id: 'village',
-    name: 'Zatopená vesnice',
-    shortLabel: 'VESNICE',
-    rx: 17,
-    ry: 14,
-  },
-  watchtower: {
-    id: 'watchtower',
-    name: 'Stará strážní věž',
-    shortLabel: 'STRÁŽNÍ VĚŽ',
-    rx: 12,
-    ry: 12,
-  },
-  abbey_crypt: {
-    id: 'abbey_crypt',
-    name: 'Opatská krypta',
-    shortLabel: 'KRYPTA',
-    rx: 15,
-    ry: 13,
-  },
-  cave: {
-    id: 'cave',
-    name: 'Vstup do jeskyně',
-    shortLabel: 'JESKYNĚ',
-    rx: 14,
-    ry: 11,
-  },
-  city_kaelvarr: {
-    id: 'city_kaelvarr',
-    name: 'Kael’Varr — Železná výheň',
-    shortLabel: "KAEL'VARR",
-    rx: 26,
-    ry: 25,
-  },
-  city_siltmoor: {
-    id: 'city_siltmoor',
-    name: 'Siltmoor — Kalný přístav',
-    shortLabel: 'SILTMOOR',
-    rx: 26,
-    ry: 25,
-  },
-  city_aethelgard: {
-    id: 'city_aethelgard',
-    name: 'Aethelgard — Bílý relikviář',
-    shortLabel: 'AETHELGARD',
-    rx: 26,
-    ry: 25,
-  },
+  shelter: { id: 'shelter', rx: 10, ry: 8 },
+  cathedral: { id: 'cathedral', rx: 16, ry: 14 },
+  fortress: { id: 'fortress', rx: 18, ry: 15 },
+  graveyard: { id: 'graveyard', rx: 16, ry: 13 },
+  village: { id: 'village', rx: 17, ry: 14 },
+  watchtower: { id: 'watchtower', rx: 12, ry: 12 },
+  abbey_crypt: { id: 'abbey_crypt', rx: 15, ry: 13 },
+  cave: { id: 'cave', rx: 14, ry: 11 },
+  city_kaelvarr: { id: 'city_kaelvarr', rx: 26, ry: 25 },
+  city_siltmoor: { id: 'city_siltmoor', rx: 26, ry: 25 },
+  city_aethelgard: { id: 'city_aethelgard', rx: 26, ry: 25 },
 };
 
 const ALL_EXPEDITION_POIS: readonly PoiKind[] = [
@@ -584,7 +525,7 @@ export class World {
   public readonly questGiver: QuestGiverSpot = {
     x: -4,
     y: 1,
-    name: 'Úkolová tabule hlídky',
+    name: t('quest.board.title'),
   };
 
   private readonly elevNoise: SimplexNoise2D;
@@ -602,7 +543,7 @@ export class World {
   private readonly chunkManager: ChunkManager;
   private readonly macroPoiCache = new Map<string, PointOfInterest | null>();
   private readonly imperialCities: PointOfInterest[] = [];
-  private readonly starterSignpostLines: string[] = [];
+  private readonly starterSignpostTargets: { poiId: PoiKind; x: number; y: number }[] = [];
 
   constructor(rawSeed = 'ASH-8492') {
     this.seed = normalizeSeed(rawSeed);
@@ -648,16 +589,22 @@ export class World {
     const nearPois = this.findPoisInRange(90, 420);
     for (let i = 0; i < Math.min(3, nearPois.length); i++) {
       const p = nearPois[i];
-      const dir = compassDir(4, 3, p.x, p.y);
-      const dist = Math.round(Math.hypot(p.x - 4, p.y - 3));
-      this.starterSignpostLines.push(`${dir}: ${p.name} (${dist})`);
-    }
-    if (this.starterSignpostLines.length === 0) {
-      this.starterSignpostLines.push('V: Pohraniční stezka');
+      this.starterSignpostTargets.push({ poiId: p.id, x: p.x, y: p.y });
     }
 
     this.chunkManager = new ChunkManager((cx, cy) => this.generateChunk(cx, cy));
     this.chunkManager.updateActiveWindow(this.spawnPoint.x, this.spawnPoint.y);
+  }
+
+  private resolveStarterSignpostLines(): string[] {
+    if (this.starterSignpostTargets.length === 0) {
+      return [t('signpost.fallback')];
+    }
+    return this.starterSignpostTargets.map((target) => {
+      const dir = compassDir(4, 3, target.x, target.y);
+      const dist = Math.round(Math.hypot(target.x - 4, target.y - 3));
+      return `${dir}: ${getPoiName(target.poiId)} (${dist})`;
+    });
   }
 
   private initImperialCities(): void {
@@ -684,8 +631,8 @@ export class World {
       this.imperialCities.push({
         uid: `city:${s.kind}`,
         id: s.kind,
-        name: tpl.name,
-        shortLabel: tpl.shortLabel,
+        name: getPoiName(s.kind),
+        shortLabel: getPoiShortLabel(s.kind),
         x: px,
         y: py,
         chunkX: s.cx,
@@ -714,8 +661,8 @@ export class World {
         return {
           poiUid: city.uid,
           poiId: city.id,
-          poiName: city.name,
-          bossName: 'Železný slévač',
+          poiName: getPoiName(city.id),
+          bossName: getBossTitle('city_kaelvarr'),
           kind: 'skeleton',
           chunkX: city.chunkX,
           chunkY: city.chunkY,
@@ -729,8 +676,8 @@ export class World {
         return {
           poiUid: city.uid,
           poiId: city.id,
-          poiName: city.name,
-          bossName: 'Alchymista z hlubin',
+          poiName: getPoiName(city.id),
+          bossName: getBossTitle('city_siltmoor'),
           kind: 'ghoul',
           chunkX: city.chunkX,
           chunkY: city.chunkY,
@@ -743,8 +690,8 @@ export class World {
       return {
         poiUid: city.uid,
         poiId: city.id,
-        poiName: city.name,
-        bossName: 'Poslední inkvizitor',
+        poiName: getPoiName(city.id),
+        bossName: getBossTitle('city_aethelgard'),
         kind: 'skeleton',
         chunkX: city.chunkX,
         chunkY: city.chunkY,
@@ -972,15 +919,15 @@ export class World {
     const col = Math.floor(x);
     const row = Math.floor(y);
     if (Math.hypot(x, y) < 26) {
-      return 'Startovní mýtina';
+      return t('zone.starting_clearing');
     }
     const cx = floorDiv(col, CHUNK_SIZE);
     const cy = floorDiv(row, CHUNK_SIZE);
     const chunk = this.chunkManager.getChunkIfCached(cx, cy);
     if (chunk?.poi && Math.hypot(x - chunk.poi.x, y - chunk.poi.y) <= Math.max(chunk.poi.radiusX, chunk.poi.radiusY) + 3) {
-      return chunk.poi.name;
+      return getPoiName(chunk.poi.id);
     }
-    return BIOME_NAMES[this.getBiomeAt(col, row)];
+    return getBiomeName(this.getBiomeAt(col, row));
   }
 
   public isNearQuestGiver(x: number, y: number, maxDist = 4.6): boolean {
@@ -1096,8 +1043,8 @@ export class World {
     const poi: PointOfInterest = {
       uid: `poi:${mx},${my}`,
       id: kind,
-      name: tpl.name,
-      shortLabel: tpl.shortLabel,
+      name: getPoiName(kind),
+      shortLabel: getPoiShortLabel(kind),
       x: px,
       y: py,
       chunkX,
@@ -1156,8 +1103,8 @@ export class World {
       {
         uid: 'poi:shelter',
         id: 'shelter',
-        name: 'Startovní útočiště',
-        shortLabel: 'ÚTOČIŠTĚ',
+        name: getPoiName('shelter'),
+        shortLabel: getPoiShortLabel('shelter'),
         x: 0,
         y: -6,
         chunkX: 0,
@@ -1916,7 +1863,12 @@ export class World {
         kind: 'signpost',
         solid: true,
       });
-      chunk.signposts.push({ x: 4, y: 3, lines: this.starterSignpostLines });
+      chunk.signposts.push({
+        x: 4,
+        y: 3,
+        lines: this.resolveStarterSignpostLines(),
+        resolveLines: () => this.resolveStarterSignpostLines(),
+      });
     }
   }
 
@@ -3367,7 +3319,11 @@ export class World {
             chunk.signposts.push({
               x: sx,
               y: sy,
-              lines: [`${homeDir}: Startovní útočiště (${homeDist})`, 'Křižovatka starých stezek'],
+              lines: [`${homeDir}: ${getPoiName('shelter')} (${homeDist})`, t('signpost.crossroads')],
+              resolveLines: () => [
+                `${compassDir(sx, sy, 0, 0)}: ${getPoiName('shelter')} (${homeDist})`,
+                t('signpost.crossroads'),
+              ],
             });
           } else {
             this.placeBrazierInChunk(chunk, sx, sy, 9);
@@ -3393,8 +3349,8 @@ export class World {
         return {
           id: `npc:${chunkKeyStr}:${wx},${wy}`,
           role,
-          name: 'Sběrač uhlíků',
-          title: 'Znavený sběrač popela u ohniště',
+          name: getTravelerName('ember_gatherer'),
+          title: getTravelerTitle('ember_gatherer'),
           glyph: '&',
           color: '#f09a43',
           x: wx + 0.5,
@@ -3409,8 +3365,8 @@ export class World {
         return {
           id: `npc:${chunkKeyStr}:${wx},${wy}`,
           role,
-          name: 'Starý kartograf',
-          title: 'Poutník se svitky map a měřidly',
+          name: getTravelerName('cartographer'),
+          title: getTravelerTitle('cartographer'),
           glyph: '&',
           color: '#e8c96b',
           x: wx + 0.5,
@@ -3426,8 +3382,8 @@ export class World {
         return {
           id: `npc:${chunkKeyStr}:${wx},${wy}`,
           role: 'pilgrim',
-          name: 'Osamělý poutník',
-          title: 'Tichý chodec cestami Vaelu',
+          name: getTravelerName('pilgrim'),
+          title: getTravelerTitle('pilgrim'),
           glyph: '@',
           color: '#f2c15a',
           x: wx + 0.5,

@@ -1,6 +1,29 @@
 import type { AudioEngine } from './audio';
 import type { EnvironmentSystem } from './environment';
 import {
+  getBiomeName,
+  getBiomeWarning,
+  getItemCategoryLabel,
+  getItemDescription,
+  getItemEffectText,
+  getItemName,
+  getLanguage,
+  getPoiName,
+  getStatusEffectDisplay,
+  getTitleAsciiLogo,
+  getTravelerFarewells,
+  getTravelerGreetings,
+  getTravelerHistory,
+  getTravelerName,
+  getTravelerSurvival,
+  getTravelerTitle,
+  setLanguage,
+  t,
+  toggleLanguage,
+  type Language,
+  type TranslationKey,
+} from './i18n';
+import {
   HEALING_HERBS_TEMPLATE,
   OIL_FLASK_TEMPLATE,
   type Inventory,
@@ -14,17 +37,16 @@ import { formatSaveTime, loadSavedGame } from './save';
 import { TitleBackground } from './titleBackground';
 import type {
   ActiveModal,
-  BiomeKind,
   ChartedMarker,
   CityPoiKind,
   InventoryItem,
+  PoiKind,
   PointOfInterest,
   QuestEntry,
   QuestStatus,
   RoadsideNpc,
-  TravelerRole,
 } from './types';
-import { BIOME_NAMES, compassDir, type World } from './world';
+import { compassDir, type World } from './world';
 
 declare const __APP_VERSION__: string;
 
@@ -36,93 +58,11 @@ const TRADABLE_LOOT_IDS = [
   'old-parchment',
 ] as const;
 
-const TITLE_ASCII_LOGO = String.raw`
- _   _ _   _ _     ___ _  ____   __  __     ___    _____ _     _   _ 
-| | | | | | | |   |_ _| |/ /\ \ / /  \ \   / / \  | ____| |   | | | |
-| | | | |_| | |    | || ' /  \ V /    \ \ / / _ \ |  _| | |   | | | |
-| |_| |  _  | |___ | || . \   | |      \ V / ___ \| |___| |___| |_| |
- \___/|_| |_|_____|___|_|\_\  |_|       \_/_/   \_\_____|_____|\___/ 
-`.replace(/^\n|\n$/g, '');
-
-const ROLE_GREETINGS: Record<TravelerRole, readonly string[]> = {
-  pilgrim: [
-    '„Pokoj tvému kroku, poutníku. Přisedni na chvíli k ohni, než noc znovu probudí stíny Vaelu.“',
-    '„Tvá lucerna ještě hoří… To je v těchto končinách vzácné znamení. Co tě vede po starých cestách?“',
-    '„Dlouho jsem nepotkal živou duši, která by nepatřila k těm prokletým hlídkám. Pověz, co hledáš?“',
-  ],
-  ember_gatherer: [
-    '„Stůj, příteli — u mého ohniště jsi v bezpečí. Máš v batohu nějaké uhlíky či staré relikvie?“',
-    '„Popel ještě nevychladl a v troskách se pořád leskne olej i železo. Chceš si odpočinout, nebo směnit zásoby?“',
-    '„Tiše, ať nepřilákáme ghúly z remízku. Ohřej se u plamene a řekni, co potřebuješ na další cestu.“',
-  ],
-  cartographer: [
-    '„Vítej u mého táboráku! Pergamen mi vlhne mlhou, ale staré cesty Vaelu mám stále v oku.“',
-    '„Pozoruhodné, že jsi došel až sem bez škrábance. Zajímá tě historie této říše, nebo chceš zakreslit ruiny?“',
-    '„Mapy zlatého věku už jsou jen cáry papíru, přesto v nich čtu stopy dávných staveb. Ptej se, pocestný.“',
-  ],
-};
-
-const ROLE_HISTORY_LORE: Record<TravelerRole, readonly string[]> = {
-  pilgrim: [
-    '„Kdysi byl Vael říší kamenných silnic, učených měst a věží, jejichž lucerny zářily do noci jako hvězdy. Lidé tu žili v hojnosti a míru.“',
-    '„Tři klenoty říše — železná metropole Kael’Varr, přístav Siltmoor a bílý Aethelgard — nesly světlo Vaelu. Pak přišla bitva s nestvůrami a všechna tři města padla.“',
-    '„Jakmile utichly zvony, příroda, popel a nestvůry si zemi vzaly zpět. V Aethelgardu prý Poslední inkvizitor stále střeží relikvii starého světla.“',
-  ],
-  ember_gatherer: [
-    '„Před válkou tu stály bohaté dílny, kovárny a sklady oleje. V železné výhni Kael’Varru kovali zbroj i lampy pro celé království.“',
-    '„Když se valily hordy nestvůr, obránci zapálili zásobárny a prchali do útočišť. V Kael’Varru u vyhaslých pecí prý stále duní kladivo Železného slévače.“',
-    '„Dnes bohaté rozvaliny hlídají stíny a nemrtví z oné bitvy — v bažinách Siltmooru se pak skrývá šílený alchymista se svými jedovatými výpary.“',
-  ],
-  cartographer: [
-    '„Moje staré mapy kvetoucího Vaelu už neplatí. Kde bývaly rušné obchodní stezky do Kael’Varru, Siltmooru a Aethelgardu, tam dnes roste jen trní a křoví.“',
-    '„Bitva s nestvůrami rozbila kamenné mosty přes řeky a zaplavila přístav Siltmoor. Dnes nad černou vodou vedou jen ztrouchnivělé lávky se zelenými lucernami.“',
-    '„Na severu stojí Aethelgard — Bílý relikviář z bledého mramoru, zatímco na východě doutná Kael’Varr. Přineseš-li uhlík či relikvii, zakreslím ti cestu k nim do mapy [M].“',
-  ],
-};
-
-const ROLE_SURVIVAL_TIPS: Record<TravelerRole, readonly string[]> = {
-  pilgrim: [
-    '„Když spatříš hlídku nestvůr, zhasni lucernu [F] a přikrč se klávesou [C]. V tichém plížení v podrostu (♣, ♠, ↟) kolem nich proklouzneš bez boje.“',
-    '„Rozsvícená lucerna [F] v noci a husté mlze září daleko — nestvůry tě pak zpozorují mnohem dříve než za dne.“',
-    '„Dávej pozor na zvuk svých kroků! Rychlý běh [Shift], boj i úskok [RMB] šíří vlny hluku, které přilákají nepřátele z okolí.“',
-  ],
-  ember_gatherer: [
-    '„Při přebrodění řeky bez mostu šetři výdrž a neplýtvej silami — voda zpomaluje krok a hlasité šplouchání budí ghúly daleko od břehu.“',
-    '„Potřebuješ-li projít kolem přesily, zhasni lucernu [F], skloň se do plížení [C] a drž se lesního podrostu.“',
-    '„Každý úder mečem i prudký úskok [RMB] dělá hluk. V ruinách nejprve poslouchej, než vyvoláš zbytečný souboj.“',
-  ],
-  cartographer: [
-    '„V neznámém terénu sleduj směrovky a šetři síly před broděním řek — vyčerpaný poutník v proudu se stává snadnou kořistí.“',
-    '„Klávesou [C] nebo krátkým klepnutím na [Shift] přepneš tiché plížení. Bez světla lucerny [F] v noci téměř zmizíš ze zraku hlídek.“',
-    '„Pokud uslyšíš či zahlédneš zvukové vlny z běhu nebo boje, počítej s tím, že nejbližší stvůry vyrazí místo prozkoumat.“',
-  ],
-};
-
-const ROLE_FAREWELLS: Record<TravelerRole, readonly string[]> = {
-  pilgrim: [
-    '„Kéž tvůj plamen nezhasne dřív, než najdeš útočiště.“',
-    '„Choď tiše, poutníku. Starý Vael na tebe ještě nezapomněl.“',
-  ],
-  ember_gatherer: [
-    '„Ať ti olej vydrží a popel pod nohama zůstane klidný.“',
-    '„Najdeš-li další uhlíky, víš, u kterého ohně mě hledat.“',
-  ],
-  cartographer: [
-    '„Šťastnou cestu a pevné stezky pod nohama, cestovateli.“',
-    '„Nezapomeň občas nahlédnout do mapy [M] — divočina ráda mate.“',
-  ],
-};
-
-const BIOME_WARNINGS: Record<BiomeKind, string> = {
-  moor_forest: 'Varování: Popelavá louka klame klidem; v remízcích hlídkují ghúlové, ale husté kapradí (♣, ♠) kryje plížení.',
-  marsh: 'Varování: Mrtvá bažina zpomaluje krok a hlasité brodění vodou láká stvůry z rákosí.',
-  ash: 'Varování: Popelavá pustina je otevřená a holá — bez krytu tě hlídky s lucernou uvidí z velké dálky.',
-  quarry: 'Varování: Ve skalnatém kamenolomu se zvuk kroků nese mezi balvany. Postupuj tiše a vyhni se hlídkám.',
-  blood_forest: 'Varování: Prokletý krvavý les je plný hladových ghúlů; pliž se pod rudými korunami bez rozsvícené lucerny.',
-  volcanic: 'Varování: Sopečná trhlina pálí lávovými průrvami. Přes pukliny skákej úskokem [RMB], ale dej pozor na hluk.',
-  frost: 'Varování: Zmrzlá pustina zpomaluje obnovu výdrže. Neplýtvej zbytečně během, pokud nemusíš.',
-  bone_plain: 'Varování: Kostěná pláň je posetá strážci popela. Sleduj hlídky a využívej stín před bojem.',
-};
+type NpcQuoteState =
+  | { kind: 'greeting'; index: number }
+  | { kind: 'history'; index: number }
+  | { kind: 'survival'; index: number }
+  | { kind: 'sketch'; poiId: PoiKind; x: number; y: number };
 
 export interface MenuCallbacks {
   onNewGame: (customSeed: string) => void;
@@ -143,17 +83,22 @@ function buildAsciiBar(current: number, max: number, slots = 10): string {
   return `[${'|'.repeat(filled)}${'.'.repeat(slots - filled)}]`;
 }
 
-function questStatusTag(status: QuestStatus): { badge: string; label: string; cls: string } {
+function questStatusTag(status: QuestStatus): {
+  badge: string;
+  tag: string;
+  label: string;
+  cls: string;
+} {
   switch (status) {
     case 'ready':
-      return { badge: '[✓]', label: 'Připraveno k odevzdání', cls: 'q-ready' };
+      return { badge: '[✓]', tag: t('quest.tag.ready'), label: t('quest.status.ready'), cls: 'q-ready' };
     case 'active':
-      return { badge: '[>]', label: 'Aktivní úkol', cls: 'q-active' };
+      return { badge: '[>]', tag: t('quest.tag.active'), label: t('quest.status.active'), cls: 'q-active' };
     case 'completed':
-      return { badge: '[x]', label: 'Splněno', cls: 'q-done' };
+      return { badge: '[x]', tag: t('quest.tag.completed'), label: t('quest.status.completed'), cls: 'q-done' };
     case 'available':
     default:
-      return { badge: '[!]', label: 'Nový úkol', cls: 'q-avail' };
+      return { badge: '[!]', tag: t('quest.tag.available'), label: t('quest.status.available'), cls: 'q-avail' };
   }
 }
 
@@ -193,11 +138,13 @@ export class UIManager {
 
   // Title / Pause Menu elements
   private readonly menuBackdrop: HTMLDivElement;
+  private readonly titleLogoEl: HTMLPreElement;
   private readonly titleBg: TitleBackground;
   private readonly menuContinueBtn: HTMLButtonElement;
   private readonly menuSaveInfoEl: HTMLDivElement;
   private readonly menuSeedDrawer: HTMLDivElement;
   private readonly menuSeedInput: HTMLInputElement;
+  private readonly menuLangBtn: HTMLButtonElement;
   private readonly menuNavButtons: HTMLButtonElement[];
   private readonly chronicleBackdrop: HTMLDivElement;
 
@@ -260,9 +207,9 @@ export class UIManager {
   private lastQuestSignature = '';
   private lastInteractText = '';
   private lastSignpostText = '';
-  private invLogMessage = 'Vyber předmět šipkami nebo myší. [Enter] použije či nasadí.';
-  private qbLogMessage = 'Vyber úkol ze seznamu. [Enter] přijme nebo odevzdá splněný úkol.';
-  private npcLogMessage = 'Zvol odpověď [1–4], šipkami nebo myší. [Esc] zavře rozhovor.';
+  private invLogMessage = t('inv.default_log');
+  private qbLogMessage = t('quest.board.default_log');
+  private npcLogMessage = t('npc.default_log');
   private qbSelectedIndex = 0;
   private journalSelectedIndex = 0;
   private npcSelectedIndex = 0;
@@ -270,7 +217,7 @@ export class UIManager {
   private npcHistoryStep = 0;
   private npcSurvivalStep = 0;
   private activeNpc: RoadsideNpc | null = null;
-  private npcSpokenQuote = '';
+  private npcQuoteState: NpcQuoteState | null = null;
 
   constructor(
     root: HTMLElement,
@@ -296,40 +243,40 @@ export class UIManager {
       <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
       <div class="hud-line">
         <span class="ascii-pipe">|</span>
-        <span id="hud-zone" class="hud-zone-title">STARTOVNÍ MÝTINA</span>
+        <span id="hud-zone" class="hud-zone-title"></span>
         <span id="hud-coords" class="hud-coords">0,2</span>
         <span class="ascii-pipe">|</span>
       </div>
       <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
       <div class="hud-line">
         <span class="ascii-pipe">|</span>
-        <span class="stat-label stat-hp">HP</span>
+        <span class="stat-label stat-hp" data-i18n="hud.stat.hp"></span>
         <span id="hud-hp-bar" class="stat-bar stat-hp">[||||||||..]</span>
         <span id="hud-hp-val" class="stat-val stat-hp"> 80/100</span>
         <span class="ascii-pipe">|</span>
       </div>
       <div class="hud-line">
         <span class="ascii-pipe">|</span>
-        <span class="stat-label stat-st">ST</span>
+        <span class="stat-label stat-st" data-i18n="hud.stat.st"></span>
         <span id="hud-st-bar" class="stat-bar stat-st">[||||||||||]</span>
         <span id="hud-st-val" class="stat-val stat-st">100/100</span>
         <span class="ascii-pipe">|</span>
       </div>
       <div class="hud-line">
         <span class="ascii-pipe">|</span>
-        <span class="stat-label stat-oil">OL</span>
+        <span class="stat-label stat-oil" data-i18n="hud.stat.oil"></span>
         <span id="hud-oil-bar" class="stat-bar stat-oil">[||||||||||]</span>
         <span id="hud-oil-val" class="stat-val stat-oil">100/100</span>
         <span class="ascii-pipe">|</span>
       </div>
       <div class="hud-line hud-env-line">
         <span class="ascii-pipe">|</span>
-        <span id="hud-env" class="hud-env-text">10:33 · Slunečný den · Jasno</span>
+        <span id="hud-env" class="hud-env-text"></span>
         <span class="ascii-pipe">|</span>
       </div>
       <div class="hud-line hud-status-line">
         <span class="ascii-pipe">|</span>
-        <span id="hud-status" class="hud-status-text">LUCERNA</span>
+        <span id="hud-status" class="hud-status-text"></span>
         <span class="ascii-pipe">|</span>
       </div>
       <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
@@ -343,14 +290,14 @@ export class UIManager {
       <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
       <div class="hud-line">
         <span class="ascii-pipe">|</span>
-        <span class="quest-hud-heading">AKTIVNÍ ÚKOL</span>
+        <span class="quest-hud-heading" data-i18n="hud.quest_heading"></span>
         <span class="hud-coords">[J]</span>
         <span class="ascii-pipe">|</span>
       </div>
       <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
-      <div id="hud-quest-title" class="quest-hud-title">Žádný aktivní úkol</div>
-      <div id="hud-quest-prog" class="quest-hud-prog">Promluv u tabule [!] na mýtině</div>
-      <div id="hud-quest-nav" class="quest-hud-nav">[E] Přijmout úkol</div>
+      <div id="hud-quest-title" class="quest-hud-title"></div>
+      <div id="hud-quest-prog" class="quest-hud-prog"></div>
+      <div id="hud-quest-nav" class="quest-hud-nav"></div>
       <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
     `;
 
@@ -359,19 +306,19 @@ export class UIManager {
     hudBottomRight.id = 'hud-bottom-right';
     hudBottomRight.className = 'ascii-controls-bar';
     hudBottomRight.innerHTML = `
-      <span class="ctrl-item"><kbd>[LMB/Space]</kbd> Útok</span>
-      <span class="ctrl-item"><kbd>[RMB]</kbd> Úskok</span>
-      <span class="ctrl-item"><kbd>[E]</kbd> Akce</span>
-      <span class="ctrl-item"><kbd>[J]</kbd> Úkoly</span>
-      <span class="ctrl-item"><kbd>[F]</kbd> Lucerna</span>
-      <span id="hud-stealth" class="ctrl-item"><kbd>[C/Shift]</kbd> Plížení</span>
-      <span id="hud-inv" class="ctrl-item"><kbd>[I]</kbd> Inventář</span>
-      <span class="ctrl-item"><kbd>[M]</kbd> Mapa</span>
-      <span class="ctrl-item"><kbd>[T/P]</kbd> Čas/Počasí</span>
-      <span class="ctrl-item"><kbd>[Esc]</kbd> Menu</span>
-      <span id="hud-mute" class="ctrl-item"><kbd>[N]</kbd> Mute</span>
+      <span class="ctrl-item"><kbd>[LMB/Space]</kbd> <span data-i18n="hud.ctrl.attack"></span></span>
+      <span class="ctrl-item"><kbd>[RMB]</kbd> <span data-i18n="hud.ctrl.dash"></span></span>
+      <span class="ctrl-item"><kbd>[E]</kbd> <span data-i18n="hud.ctrl.action"></span></span>
+      <span class="ctrl-item"><kbd>[J]</kbd> <span data-i18n="hud.ctrl.quests"></span></span>
+      <span class="ctrl-item"><kbd>[F]</kbd> <span data-i18n="hud.ctrl.lantern"></span></span>
+      <span id="hud-stealth" class="ctrl-item"></span>
+      <span id="hud-inv" class="ctrl-item"></span>
+      <span class="ctrl-item"><kbd>[M]</kbd> <span data-i18n="hud.ctrl.map"></span></span>
+      <span class="ctrl-item"><kbd>[T/P]</kbd> <span data-i18n="hud.ctrl.time_weather"></span></span>
+      <span class="ctrl-item"><kbd>[Esc]</kbd> <span data-i18n="hud.ctrl.menu"></span></span>
+      <span id="hud-mute" class="ctrl-item"></span>
       <span class="ctrl-sep">·</span>
-      <span class="ctrl-item">Zoom <strong id="hud-zoom">1.00×</strong></span>
+      <span class="ctrl-item"><span data-i18n="hud.ctrl.zoom"></span> <strong id="hud-zoom">1.00×</strong></span>
     `;
 
     // 2b. Floating combat & loot toast
@@ -379,7 +326,7 @@ export class UIManager {
     this.toastEl.id = 'hud-toast';
     this.toastEl.className = 'hud-toast hidden';
 
-    // 2c. Contextual interaction prompt ([E] Promluvit / Sebrat relikvii)
+    // 2c. Contextual interaction prompt ([E] Speak / Collect relic)
     this.interactPromptEl = document.createElement('div');
     this.interactPromptEl.id = 'interact-prompt';
     this.interactPromptEl.className = 'interact-prompt hidden';
@@ -394,8 +341,8 @@ export class UIManager {
     this.deathBannerEl.id = 'death-banner';
     this.deathBannerEl.className = 'death-banner hidden';
     this.deathBannerEl.innerHTML = `
-      <div class="death-title">+--- PADL JSI V POPELU ---+</div>
-      <div class="death-sub">Stiskni <kbd>[R]</kbd> pro návrat k útočišti</div>
+      <div class="death-title" data-i18n="death.title"></div>
+      <div class="death-sub"><span data-i18n="death.sub_prefix"></span> <kbd>[R]</kbd> <span data-i18n="death.sub_suffix"></span></div>
     `;
 
     // 3. Fullscreen Title Screen / Pause Menu
@@ -403,60 +350,71 @@ export class UIManager {
     this.menuBackdrop.id = 'game-menu-modal';
     this.menuBackdrop.className = 'title-screen';
     this.menuBackdrop.setAttribute('role', 'dialog');
-    this.menuBackdrop.setAttribute('aria-label', 'Hlavní menu');
+    this.menuBackdrop.setAttribute('data-i18n-aria', 'menu.aria_label');
     this.menuBackdrop.innerHTML = `
       <canvas id="title-bg-canvas" class="title-bg-canvas" aria-hidden="true"></canvas>
       <div class="title-screen-content">
         <div class="title-header-block">
-          <pre id="title-ascii-logo" class="title-ascii-logo" aria-label="UHLIKY VAELU"></pre>
-          <div class="title-lore-subtitle">„Když velká říše Vaelu lehla popelem, zůstala jen jiskra v tvé lucerně.“</div>
+          <pre id="title-ascii-logo" class="title-ascii-logo"></pre>
+          <div class="title-lore-subtitle" data-i18n="menu.subtitle"></div>
         </div>
-        <nav class="title-nav" aria-label="Hlavní nabídka">
+        <nav class="title-nav" data-i18n-aria="menu.nav_aria_label">
           <button id="menu-continue-btn" type="button" class="title-nav-item" data-menu-action="continue">
             <span class="title-item-main">
               <span class="title-cursor" aria-hidden="true"> </span>
-              <span class="title-item-label">Pokračovat ve výpravě</span>
+              <span class="title-item-label" data-i18n="menu.continue"></span>
             </span>
             <div id="menu-save-info" class="title-item-sub"></div>
           </button>
           <button id="menu-new-game-btn" type="button" class="title-nav-item" data-menu-action="new_game">
             <span class="title-item-main">
               <span class="title-cursor" aria-hidden="true"> </span>
-              <span class="title-item-label">Nová výprava</span>
+              <span class="title-item-label" data-i18n="menu.new_game"></span>
             </span>
           </button>
           <button id="menu-custom-seed-btn" type="button" class="title-nav-item" data-menu-action="custom_seed">
             <span class="title-item-main">
               <span class="title-cursor" aria-hidden="true"> </span>
-              <span class="title-item-label">Vlastní seed světa</span>
+              <span class="title-item-label" data-i18n="menu.custom_seed"></span>
             </span>
           </button>
           <div id="title-seed-drawer" class="title-seed-drawer hidden">
-            <input id="menu-seed-input" type="text" maxlength="20" class="ascii-input title-seed-input" placeholder="Např. ASH-8492" autocomplete="off" />
-            <button id="menu-seed-launch-btn" type="button" class="ascii-btn ascii-btn-primary">[ Spustit ]</button>
+            <input id="menu-seed-input" type="text" maxlength="20" class="ascii-input title-seed-input" data-i18n-placeholder="menu.seed_placeholder" autocomplete="off" />
+            <button id="menu-seed-launch-btn" type="button" class="ascii-btn ascii-btn-primary" data-i18n="menu.seed_launch"></button>
           </div>
+          <button id="menu-language-btn" type="button" class="title-nav-item" data-menu-action="language">
+            <span class="title-item-main">
+              <span class="title-cursor" aria-hidden="true"> </span>
+              <span class="title-item-label"><span data-i18n="menu.language_label"></span>:</span>
+              <span class="title-lang-switch">
+                <span class="title-lang-opt" data-lang="cs">Čeština</span>
+                <span class="title-lang-sep">/</span>
+                <span class="title-lang-opt" data-lang="en">English</span>
+              </span>
+            </span>
+          </button>
           <button id="menu-chronicle-btn" type="button" class="title-nav-item" data-menu-action="chronicle">
             <span class="title-item-main">
               <span class="title-cursor" aria-hidden="true"> </span>
-              <span class="title-item-label">Kronika a ovládání</span>
+              <span class="title-item-label" data-i18n="menu.chronicle"></span>
             </span>
           </button>
           <button id="menu-quit-btn" type="button" class="title-nav-item" data-menu-action="quit">
             <span class="title-item-main">
               <span class="title-cursor" aria-hidden="true"> </span>
-              <span class="title-item-label">Ukončit hru</span>
+              <span class="title-item-label" data-i18n="menu.quit"></span>
             </span>
           </button>
         </nav>
-        <div class="title-audio-panel" aria-label="Nastavení zvuku">
-          <div class="title-audio-heading">-- ZVUK --</div>
+        <div class="title-audio-panel" data-i18n-aria="menu.audio_aria_label">
+          <div class="title-audio-heading" data-i18n="menu.audio_heading"></div>
           <label class="title-audio-row" for="menu-ambient-vol">
-            <span class="title-audio-label">Hudba / Ambient</span>
+            <span class="title-audio-label" data-i18n="menu.audio_ambient"></span>
             <input id="menu-ambient-vol" type="range" min="0" max="100" step="1" class="title-audio-slider" />
             <span id="menu-ambient-vol-val" class="title-audio-val">80%</span>
           </label>
           <label class="title-audio-row" for="menu-sfx-vol">
-            <span class="title-audio-label">Efekty</span>
+            <span class="title-audio-label" data-i18n="menu.audio_sfx"></span>
             <input id="menu-sfx-vol" type="range" min="0" max="100" step="1" class="title-audio-slider" />
             <span id="menu-sfx-vol-val" class="title-audio-val">85%</span>
           </label>
@@ -465,12 +423,11 @@ export class UIManager {
       <div class="title-footer">
         <span class="title-version">v${__APP_VERSION__}</span>
         <span class="title-footer-sep">·</span>
-        <span class="title-controls-hint">[↑/↓] Výběr · [Enter] Potvrdit</span>
+        <span class="title-controls-hint" data-i18n="menu.footer_hint"></span>
       </div>
     `;
 
-    const titleLogoEl = this.menuBackdrop.querySelector('#title-ascii-logo') as HTMLPreElement;
-    titleLogoEl.textContent = TITLE_ASCII_LOGO;
+    this.titleLogoEl = this.menuBackdrop.querySelector('#title-ascii-logo') as HTMLPreElement;
     const titleBgCanvas = this.menuBackdrop.querySelector('#title-bg-canvas') as HTMLCanvasElement;
     this.titleBg = new TitleBackground(titleBgCanvas);
 
@@ -479,48 +436,41 @@ export class UIManager {
     this.chronicleBackdrop.id = 'chronicle-modal';
     this.chronicleBackdrop.className = 'ascii-modal-backdrop chronicle-backdrop hidden';
     this.chronicleBackdrop.setAttribute('role', 'dialog');
-    this.chronicleBackdrop.setAttribute('aria-label', 'Kronika a ovládání');
+    this.chronicleBackdrop.setAttribute('data-i18n-aria', 'chronicle.aria_label');
     this.chronicleBackdrop.innerHTML = `
       <div class="ascii-modal chronicle-modal">
         <div class="modal-header">
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
           <div class="modal-title-row">
-            <span class="modal-title"><span class="ascii-pipe">|</span> KRONIKA A OVLÁDÁNÍ</span>
-            <span class="modal-close-hint">[Esc] Zavřít <span class="ascii-pipe">|</span></span>
+            <span class="modal-title"><span class="ascii-pipe">|</span> <span data-i18n="chronicle.title"></span></span>
+            <span class="modal-close-hint"><span data-i18n="chronicle.close_hint"></span> <span class="ascii-pipe">|</span></span>
           </div>
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
         </div>
         <div class="chronicle-body">
-          <div class="pane-heading">-- KRONIKA VAELU --</div>
-          <p class="chronicle-lore">
-            Před třemi věky stála říše Vaelu na třech pilířích: na bílém mramoru Aethelgardu,
-            železných výhních Kael’Varru a solných baštách Siltmooru. Pak přišla Noc popela —
-            obloha zčernala, z rozsedlin vystoupily stíny a lucerny strážců pohasly.
-          </p>
-          <p class="chronicle-lore">
-            Jsi posledním poutníkem, který nese živý uhlík. Bloudíš rozvalinami a pustinami,
-            hlídáš hladinu oleje ve své lucerně, sbíráš zapomenuté relikvie a hledáš pravdu o pádu Vaelu.
-          </p>
-          <div class="pane-heading">-- PŘEHLED OVLÁDÁNÍ --</div>
+          <div class="pane-heading" data-i18n="chronicle.lore_heading"></div>
+          <p class="chronicle-lore" data-i18n="chronicle.lore_p1"></p>
+          <p class="chronicle-lore" data-i18n="chronicle.lore_p2"></p>
+          <div class="pane-heading" data-i18n="chronicle.controls_heading"></div>
           <div class="chronicle-controls-grid">
-            <div class="chronicle-ctrl-row"><kbd>[W A S D] / [Šipky]</kbd><span>Pohyb poutníka</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[Shift]</kbd><span>Běh (spotřebovává výdrž)</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[C]</kbd><span>Plížení (tichý krok v porostu)</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[LMB] / [Mezerník]</kbd><span>Útok zbraní / úder</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[RMB]</kbd><span>Úskok (Dash) směrem kurzoru</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[F]</kbd><span>Zapnout / zhasnout lucernu</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[E]</kbd><span>Interakce (tabule, poutníci, relikvie)</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[I] / [Tab]</kbd><span>Inventář a výbava</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[M]</kbd><span>Mapa prozkoumaného světa</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[J]</kbd><span>Deník úkolů</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[Kolečko myši]</kbd><span>Přiblížení / oddálení kamery</span></div>
-            <div class="chronicle-ctrl-row"><kbd>[N] / [Esc]</kbd><span>Ztlumit zvuk / Menu</span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_move_key"></kbd><span data-i18n="chronicle.ctrl_move"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_sprint_key"></kbd><span data-i18n="chronicle.ctrl_sprint"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_stealth_key"></kbd><span data-i18n="chronicle.ctrl_stealth"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_attack_key"></kbd><span data-i18n="chronicle.ctrl_attack"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_dash_key"></kbd><span data-i18n="chronicle.ctrl_dash"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_lantern_key"></kbd><span data-i18n="chronicle.ctrl_lantern"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_interact_key"></kbd><span data-i18n="chronicle.ctrl_interact"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_inventory_key"></kbd><span data-i18n="chronicle.ctrl_inventory"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_map_key"></kbd><span data-i18n="chronicle.ctrl_map"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_journal_key"></kbd><span data-i18n="chronicle.ctrl_journal"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_zoom_key"></kbd><span data-i18n="chronicle.ctrl_zoom"></span></div>
+            <div class="chronicle-ctrl-row"><kbd data-i18n="chronicle.ctrl_mute_key"></kbd><span data-i18n="chronicle.ctrl_mute"></span></div>
           </div>
         </div>
         <div class="modal-footer chronicle-footer">
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
           <div class="chronicle-footer-actions">
-            <button id="chronicle-close-btn" type="button" class="ascii-btn ascii-btn-primary">[Esc] Zavřít kroniku</button>
+            <button id="chronicle-close-btn" type="button" class="ascii-btn ascii-btn-primary" data-i18n="chronicle.close_btn"></button>
           </div>
         </div>
       </div>
@@ -531,25 +481,25 @@ export class UIManager {
     this.invBackdrop.id = 'inventory-modal';
     this.invBackdrop.className = 'ascii-modal-backdrop hidden';
     this.invBackdrop.setAttribute('role', 'dialog');
-    this.invBackdrop.setAttribute('aria-label', 'Inventář');
+    this.invBackdrop.setAttribute('data-i18n-aria', 'inv.aria_label');
     this.invBackdrop.innerHTML = `
       <div class="ascii-modal inventory-modal">
         <div class="modal-header">
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
           <div class="modal-title-row">
-            <span class="modal-title"><span class="ascii-pipe">|</span> INVENTÁŘ POUTNÍKA</span>
-            <span class="modal-close-hint">[I / Tab / Esc] Zavřít <span class="ascii-pipe">|</span></span>
+            <span class="modal-title"><span class="ascii-pipe">|</span> <span data-i18n="inv.title"></span></span>
+            <span class="modal-close-hint"><span data-i18n="inv.close_hint"></span> <span class="ascii-pipe">|</span></span>
           </div>
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
         </div>
         <div class="inventory-body">
           <div class="inventory-list-pane">
-            <div class="pane-heading">-- BATOH --</div>
+            <div class="pane-heading" data-i18n="inv.pane_bag"></div>
             <div id="inv-list" class="inv-list"></div>
           </div>
           <div class="inventory-divider"></div>
           <div class="inventory-detail-pane">
-            <div class="pane-heading">-- DETAIL PŘEDMĚTU --</div>
+            <div class="pane-heading" data-i18n="inv.pane_detail"></div>
             <div class="inv-detail-header">
               <div id="inv-detail-art" class="inv-detail-art"></div>
               <div class="inv-detail-head-text">
@@ -560,8 +510,8 @@ export class UIManager {
             <div id="inv-detail-desc" class="inv-detail-desc"></div>
             <div id="inv-detail-effect" class="inv-detail-effect"></div>
             <div class="inv-detail-actions">
-              <button id="inv-action-btn" type="button" class="ascii-btn ascii-btn-primary">[Enter] Použít</button>
-              <button id="inv-close-btn" type="button" class="ascii-btn">[Esc] Zavřít</button>
+              <button id="inv-action-btn" type="button" class="ascii-btn ascii-btn-primary"></button>
+              <button id="inv-close-btn" type="button" class="ascii-btn" data-i18n="inv.close_btn"></button>
             </div>
           </div>
           <div class="inventory-divider"></div>
@@ -582,33 +532,34 @@ export class UIManager {
     this.qbBackdrop.id = 'quest-board-modal';
     this.qbBackdrop.className = 'ascii-modal-backdrop hidden';
     this.qbBackdrop.setAttribute('role', 'dialog');
-    this.qbBackdrop.setAttribute('aria-label', 'Úkolová tabule');
+    this.qbBackdrop.setAttribute('data-i18n-aria', 'quest.board.aria_label');
     this.qbBackdrop.innerHTML = `
       <div class="ascii-modal quest-modal">
         <div class="modal-header">
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
           <div class="modal-title-row">
-            <span class="modal-title"><span class="ascii-pipe">|</span> ÚKOLOVÁ TABULE HLÍDKY [!]</span>
-            <span class="modal-close-hint">[E / Esc] Zavřít <span class="ascii-pipe">|</span></span>
+            <span class="modal-title"><span class="ascii-pipe">|</span> <span data-i18n="quest.board.title"></span></span>
+            <span class="modal-close-hint"><span data-i18n="quest.board.close_hint"></span> <span class="ascii-pipe">|</span></span>
           </div>
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
         </div>
-        <div class="inventory-body">
+        <div class="quest-modal-body">
           <div class="inventory-list-pane">
-            <div class="pane-heading">-- NABÍDKA ÚKOLŮ --</div>
+            <div class="pane-heading" data-i18n="quest.board.pane_list"></div>
             <div id="qb-list" class="inv-list"></div>
           </div>
           <div class="inventory-divider"></div>
           <div class="inventory-detail-pane">
-            <div class="pane-heading">-- ZÁPIS HLÍDKY --</div>
+            <div class="pane-heading" data-i18n="quest.board.pane_detail"></div>
             <div id="qb-detail-title" class="inv-detail-title"></div>
+            <div class="quest-detail-giver" data-i18n="quest.giver_line"></div>
             <div id="qb-detail-status" class="inv-detail-meta"></div>
-            <div id="qb-detail-quote" class="inv-detail-desc"></div>
+            <div id="qb-detail-quote" class="inv-detail-desc quest-detail-story"></div>
             <div id="qb-detail-objectives" class="quest-objectives-list"></div>
             <div id="qb-detail-reward" class="inv-detail-effect"></div>
             <div class="inv-detail-actions">
-              <button id="qb-action-btn" type="button" class="ascii-btn ascii-btn-primary">[Enter] Přijmout úkol</button>
-              <button id="qb-close-btn" type="button" class="ascii-btn">[Esc] Odejít</button>
+              <button id="qb-action-btn" type="button" class="ascii-btn ascii-btn-primary"></button>
+              <button id="qb-close-btn" type="button" class="ascii-btn" data-i18n="quest.board.close_btn"></button>
             </div>
           </div>
         </div>
@@ -625,39 +576,40 @@ export class UIManager {
     this.journalBackdrop.id = 'journal-modal';
     this.journalBackdrop.className = 'ascii-modal-backdrop hidden';
     this.journalBackdrop.setAttribute('role', 'dialog');
-    this.journalBackdrop.setAttribute('aria-label', 'Deník úkolů');
+    this.journalBackdrop.setAttribute('data-i18n-aria', 'quest.journal.aria_label');
     this.journalBackdrop.innerHTML = `
       <div class="ascii-modal quest-modal">
         <div class="modal-header">
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
           <div class="modal-title-row">
-            <span class="modal-title"><span class="ascii-pipe">|</span> DENÍK POUTNÍKA — ÚKOLY</span>
-            <span class="modal-close-hint">[J / Esc] Zavřít <span class="ascii-pipe">|</span></span>
+            <span class="modal-title"><span class="ascii-pipe">|</span> <span data-i18n="quest.journal.title"></span></span>
+            <span class="modal-close-hint"><span data-i18n="quest.journal.close_hint"></span> <span class="ascii-pipe">|</span></span>
           </div>
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
         </div>
-        <div class="inventory-body">
+        <div class="quest-modal-body">
           <div class="inventory-list-pane">
-            <div class="pane-heading">-- ÚKOLY --</div>
+            <div class="pane-heading" data-i18n="quest.journal.pane_list"></div>
             <div id="journal-list" class="inv-list"></div>
           </div>
           <div class="inventory-divider"></div>
           <div class="inventory-detail-pane">
-            <div class="pane-heading">-- PODROBNOSTI CÍLE --</div>
+            <div class="pane-heading" data-i18n="quest.journal.pane_detail"></div>
             <div id="journal-detail-title" class="inv-detail-title"></div>
+            <div class="quest-detail-giver" data-i18n="quest.giver_line"></div>
             <div id="journal-detail-status" class="inv-detail-meta"></div>
-            <div id="journal-detail-desc" class="inv-detail-desc"></div>
+            <div id="journal-detail-desc" class="inv-detail-desc quest-detail-story"></div>
             <div id="journal-detail-objectives" class="quest-objectives-list"></div>
             <div id="journal-detail-reward" class="inv-detail-effect"></div>
             <div class="inv-detail-actions">
-              <button id="journal-track-btn" type="button" class="ascii-btn ascii-btn-primary">[Enter] Sledovat v HUDu</button>
-              <button id="journal-close-btn" type="button" class="ascii-btn">[Esc] Zavřít</button>
+              <button id="journal-track-btn" type="button" class="ascii-btn ascii-btn-primary"></button>
+              <button id="journal-close-btn" type="button" class="ascii-btn" data-i18n="quest.journal.close_btn"></button>
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
-          <div class="inv-log">| Cíle aktivních úkolů jsou zvýrazněny symbolem [!] na mapě světa [M].</div>
+          <div class="inv-log" data-i18n="quest.journal.footer_tip"></div>
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
         </div>
       </div>
@@ -668,33 +620,33 @@ export class UIManager {
     this.npcBackdrop.id = 'npc-dialog-modal';
     this.npcBackdrop.className = 'ascii-modal-backdrop hidden';
     this.npcBackdrop.setAttribute('role', 'dialog');
-    this.npcBackdrop.setAttribute('aria-label', 'Rozhovor s pocestným');
+    this.npcBackdrop.setAttribute('data-i18n-aria', 'npc.aria_label');
     this.npcBackdrop.innerHTML = `
       <div class="ascii-modal npc-dialog-modal">
         <div class="modal-header">
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
           <div class="modal-title-row">
-            <span class="modal-title"><span class="ascii-pipe">|</span> <span id="npc-modal-title">POUTNÍK U CESTY</span></span>
-            <span class="modal-close-hint"><span id="npc-modal-hint">[1–4 / Myš] Volba · [Esc] Rozloučit se</span> <span class="ascii-pipe">|</span></span>
+            <span class="modal-title"><span class="ascii-pipe">|</span> <span id="npc-modal-title"></span></span>
+            <span class="modal-close-hint"><span id="npc-modal-hint"></span> <span class="ascii-pipe">|</span></span>
           </div>
           <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
         </div>
         <div class="inventory-body npc-dialog-body">
           <div class="inventory-list-pane">
-            <div id="npc-pane-heading" class="pane-heading">-- TÉMA ROZHOVORU --</div>
+            <div id="npc-pane-heading" class="pane-heading"></div>
             <div id="npc-list" class="inv-list"></div>
           </div>
           <div class="inventory-divider"></div>
           <div class="inventory-detail-pane">
-            <div class="pane-heading">-- ODPOVĚĎ POUTNÍKA --</div>
+            <div class="pane-heading" data-i18n="npc.pane_reply"></div>
             <div id="npc-detail-title" class="inv-detail-title"></div>
             <div id="npc-detail-meta" class="inv-detail-meta"></div>
             <div id="npc-detail-desc" class="inv-detail-desc"></div>
             <div id="npc-detail-stock" class="quest-objectives-list"></div>
             <div id="npc-detail-effect" class="inv-detail-effect"></div>
             <div class="inv-detail-actions">
-              <button id="npc-action-btn" type="button" class="ascii-btn ascii-btn-primary">[Enter] Zvolit</button>
-              <button id="npc-close-btn" type="button" class="ascii-btn">[Esc] Odejít</button>
+              <button id="npc-action-btn" type="button" class="ascii-btn ascii-btn-primary"></button>
+              <button id="npc-close-btn" type="button" class="ascii-btn" data-i18n="npc.close_btn"></button>
             </div>
           </div>
         </div>
@@ -750,6 +702,7 @@ export class UIManager {
     this.menuSaveInfoEl = this.menuBackdrop.querySelector('#menu-save-info') as HTMLDivElement;
     this.menuSeedDrawer = this.menuBackdrop.querySelector('#title-seed-drawer') as HTMLDivElement;
     this.menuSeedInput = this.menuBackdrop.querySelector('#menu-seed-input') as HTMLInputElement;
+    this.menuLangBtn = this.menuBackdrop.querySelector('#menu-language-btn') as HTMLButtonElement;
     this.menuNavButtons = Array.from(
       this.menuBackdrop.querySelectorAll('.title-nav-item')
     ) as HTMLButtonElement[];
@@ -807,6 +760,20 @@ export class UIManager {
         this.menuCallbacks.onNewGame(this.menuSeedInput.value);
         this.menuSeedInput.value = '';
         this.toggleSeedDrawer(false);
+      }
+    });
+
+    this.menuLangBtn.addEventListener('click', (e) => {
+      this.audio.unlock();
+      this.audio.playUiClick('select');
+      const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-lang]');
+      const explicitLang = target?.dataset.lang as Language | undefined;
+      if (explicitLang === 'cs' || explicitLang === 'en') {
+        if (explicitLang !== getLanguage()) {
+          setLanguage(explicitLang);
+        }
+      } else {
+        toggleLanguage();
       }
     });
 
@@ -931,8 +898,73 @@ export class UIManager {
       if (e.target === this.npcBackdrop) this.closeOverlayToGame();
     });
 
+    this.applyTranslations(world.seed);
     this.refreshMenuState(world.seed);
     this.renderInventoryModal();
+  }
+
+  /** Immediately updates every UI panel and HUD label when the active language changes */
+  public applyTranslations(currentWorldSeed: string): void {
+    const lang = getLanguage();
+
+    this.root.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+      const key = el.dataset.i18n as TranslationKey | undefined;
+      if (key) el.textContent = t(key);
+    });
+
+    this.root.querySelectorAll<HTMLInputElement>('[data-i18n-placeholder]').forEach((el) => {
+      const key = el.dataset.i18nPlaceholder as TranslationKey | undefined;
+      if (key) el.placeholder = t(key);
+    });
+
+    this.root.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => {
+      const key = el.dataset.i18nAria as TranslationKey | undefined;
+      if (key) el.setAttribute('aria-label', t(key));
+    });
+
+    this.titleLogoEl.textContent = getTitleAsciiLogo();
+    this.titleLogoEl.setAttribute('aria-label', t('app.title').toUpperCase());
+
+    this.menuLangBtn.querySelectorAll<HTMLElement>('[data-lang]').forEach((opt) => {
+      opt.classList.toggle('active', opt.dataset.lang === lang);
+    });
+
+    this.invLogMessage = t('inv.default_log');
+    this.qbLogMessage = t('quest.board.default_log');
+    this.npcLogMessage = t('npc.default_log');
+
+    this.updateMenuSaveInfo(currentWorldSeed);
+    this.mapOverlay.applyTranslations();
+
+    this.lastHudSignature = '';
+    this.lastQuestSignature = '';
+    this.lastInteractText = '';
+    this.lastSignpostText = '';
+    this.lastInvStatsSignature = '';
+
+    this.renderInventoryModal();
+    if (this.activeModal === 'quest_board') this.renderQuestBoardModal();
+    if (this.activeModal === 'journal') this.renderJournalModal();
+    if (this.activeModal === 'npc_dialog') this.renderNpcDialogModal();
+  }
+
+  private updateMenuSaveInfo(currentWorldSeed: string): void {
+    const save = loadSavedGame();
+    const canContinue = this.sessionActive || Boolean(save);
+    this.menuContinueBtn.classList.toggle('hidden', !canContinue);
+
+    if (this.sessionActive) {
+      this.menuSaveInfoEl.textContent = save
+        ? t('menu.save_info', { seed: currentWorldSeed, time: formatSaveTime(save.savedAt) })
+        : t('menu.save_active', { seed: currentWorldSeed });
+    } else if (save) {
+      this.menuSaveInfoEl.textContent = t('menu.save_info', {
+        seed: save.seed,
+        time: formatSaveTime(save.savedAt),
+      });
+    } else {
+      this.menuSaveInfoEl.textContent = '';
+    }
   }
 
   /** Rebinds UI state to a freshly generated or loaded world session */
@@ -954,6 +986,7 @@ export class UIManager {
     this.journalSelectedIndex = 0;
     this.npcSelectedIndex = 0;
     this.activeNpc = null;
+    this.npcQuoteState = null;
     this.signpostEl.classList.add('hidden');
     this.interactPromptEl.classList.add('hidden');
     this.mapOverlay.rebuild(world);
@@ -999,6 +1032,20 @@ export class UIManager {
     this.renderMenuSelection();
   }
 
+  public handleMenuHorizontal(delta: number): void {
+    if (!this.isMenuOpen()) return;
+    const visible = this.getVisibleMenuButtons();
+    const activeBtn = visible[this.menuSelectedIndex];
+    if (activeBtn?.dataset.menuAction === 'language') {
+      const next: Language = delta < 0 ? 'cs' : 'en';
+      if (next !== getLanguage()) {
+        this.audio.unlock();
+        this.audio.playUiClick('select');
+        setLanguage(next);
+      }
+    }
+  }
+
   public confirmMenu(): void {
     if (!this.isMenuOpen()) return;
     const visible = this.getVisibleMenuButtons();
@@ -1034,26 +1081,13 @@ export class UIManager {
     // Fallback if running in a regular browser tab where window.close() is blocked
     window.setTimeout(() => {
       if (!window.closed) {
-        this.showToast('Pro ukončení v prohlížeči zavři tuto kartu.', 3.2);
+        this.showToast(t('menu.quit_browser_toast'), 3.2);
       }
     }, 120);
   }
 
   public refreshMenuState(currentWorldSeed: string): void {
-    const save = loadSavedGame();
-    const canContinue = this.sessionActive || Boolean(save);
-    this.menuContinueBtn.classList.toggle('hidden', !canContinue);
-
-    if (this.sessionActive) {
-      this.menuSaveInfoEl.textContent = save
-        ? `Seed ${currentWorldSeed} · ${formatSaveTime(save.savedAt)}`
-        : `Aktivní výprava · Seed ${currentWorldSeed}`;
-    } else if (save) {
-      this.menuSaveInfoEl.textContent = `Seed ${save.seed} · ${formatSaveTime(save.savedAt)}`;
-    } else {
-      this.menuSaveInfoEl.textContent = '';
-    }
-
+    this.updateMenuSaveInfo(currentWorldSeed);
     this.toggleSeedDrawer(false);
     this.chronicleOpen = false;
     this.chronicleBackdrop.classList.add('hidden');
@@ -1190,14 +1224,34 @@ export class UIManager {
     this.npcSelectedIndex = 0;
     this.npcHistoryStep = npc.loreIndex;
     this.npcSurvivalStep = npc.loreIndex;
-    const greetings = ROLE_GREETINGS[npc.role];
+    const greetings = getTravelerGreetings(npc.role);
     const greetIdx = Math.floor(Math.random() * greetings.length);
-    this.npcSpokenQuote = greetings[greetIdx];
-    this.npcLogMessage = 'Zvol odpověď [1–4], šipkami nebo myší. [Esc] zavře rozhovor.';
+    this.npcQuoteState = { kind: 'greeting', index: greetIdx };
+    this.npcLogMessage = t('npc.default_log');
     this.activeModal = 'npc_dialog';
     this.npcBackdrop.classList.remove('hidden');
     this.audio.playParchmentRustle();
     this.renderNpcDialogModal();
+  }
+
+  private resolveNpcQuote(npc: RoadsideNpc): string {
+    const q = this.npcQuoteState;
+    if (!q) return '';
+    if (q.kind === 'greeting') {
+      const list = getTravelerGreetings(npc.role);
+      return list[q.index % list.length];
+    }
+    if (q.kind === 'history') {
+      const list = getTravelerHistory(npc.role);
+      return list[q.index % list.length];
+    }
+    if (q.kind === 'survival') {
+      const list = getTravelerSurvival(npc.role);
+      return `${list[q.index % list.length]} ${getBiomeWarning(npc.biome)}`;
+    }
+    const dir = compassDir(this.player.x, this.player.y, q.x, q.y);
+    const dist = Math.round(Math.hypot(q.x - this.player.x, q.y - this.player.y));
+    return t('npc.quote.sketch', { poi: getPoiName(q.poiId), dir, dist });
   }
 
   public triggerListModalChoice(index: number): void {
@@ -1285,7 +1339,7 @@ export class UIManager {
     } else if (selected.status === 'active') {
       this.quests.setTrackedQuest(selected.id);
       this.audio.playUiClick('select');
-      this.qbLogMessage = `Sleduješ úkol: ${selected.title}.`;
+      this.qbLogMessage = t('quest.board.tracking_log', { title: selected.title });
     }
     this.renderQuestBoardModal();
   }
@@ -1297,7 +1351,7 @@ export class UIManager {
     if (selected.status === 'active' || selected.status === 'ready') {
       this.quests.setTrackedQuest(selected.id);
       this.audio.playUiClick('select');
-      this.showToast(`Sledovaný úkol: ${selected.title}`);
+      this.showToast(t('toast.tracked_quest', { title: selected.title }));
       this.renderJournalModal();
     }
   }
@@ -1314,19 +1368,28 @@ export class UIManager {
   }
 
   private renderObjectivesHtml(quest: QuestEntry): string {
-    return quest.objectives
+    const doneTotal = quest.objectives.reduce((acc, o) => acc + Math.min(o.current, o.target), 0);
+    const targetTotal = quest.objectives.reduce((acc, o) => acc + o.target, 0);
+    const heading = `<div class="q-obj-heading">${t('quest.objectives_heading', {
+      done: doneTotal,
+      total: targetTotal,
+    })}</div>`;
+
+    const rows = quest.objectives
       .map((obj) => {
         const mark = obj.done ? '[✓]' : '[ ]';
-        const progress = obj.target > 1 ? ` (${obj.current}/${obj.target})` : '';
+        const progress = ` (${obj.current}/${obj.target})`;
         let dirHint = '';
         if (!obj.done && obj.targetX !== undefined && obj.targetY !== undefined) {
           const dir = compassDir(this.player.x, this.player.y, obj.targetX, obj.targetY);
           const dist = Math.round(Math.hypot(obj.targetX - this.player.x, obj.targetY - this.player.y));
-          dirHint = ` <span class="q-obj-dir">(${dir}, ~${dist} buněk)</span>`;
+          dirHint = ` <span class="q-obj-dir">${t('quest.obj_dir', { dir, dist })}</span>`;
         }
-        return `<div class="q-obj-row${obj.done ? ' q-obj-done' : ''}">${mark} ${obj.label}${progress}${dirHint}</div>`;
+        return `<div class="q-obj-row${obj.done ? ' q-obj-done' : ''}">${mark} ${obj.label}<span class="q-obj-count">${progress}</span>${dirHint}</div>`;
       })
       .join('');
+
+    return `${heading}${rows}`;
   }
 
   private renderQuestBoardModal(): void {
@@ -1337,10 +1400,10 @@ export class UIManager {
     quests.forEach((q, idx) => {
       const row = document.createElement('button');
       row.type = 'button';
-      row.className = `inv-item-row${idx === this.qbSelectedIndex ? ' selected' : ''}`;
+      row.className = `inv-item-row quest-list-row${idx === this.qbSelectedIndex ? ' selected' : ''}`;
       const cursor = idx === this.qbSelectedIndex ? '>' : ' ';
       const st = questStatusTag(q.status);
-      row.innerHTML = `<span class="inv-cursor">${cursor}</span> <span class="inv-badge ${st.cls}">${st.badge}</span> <span class="inv-name">${q.title}</span>`;
+      row.innerHTML = `<span class="inv-cursor">${cursor}</span><span class="inv-name">${q.title}</span><span class="quest-status-pill ${st.cls}">${st.tag}</span>`;
       row.addEventListener('click', () => {
         this.qbSelectedIndex = idx;
         this.audio.playUiClick('select');
@@ -1356,25 +1419,28 @@ export class UIManager {
     this.qbDetailTitleEl.textContent = `${st.badge} ${selected.title}`;
     const repeatText =
       selected.repeatable && selected.completionCount > 0
-        ? ` · Splněno ${selected.completionCount}×`
+        ? t('quest.repeat_count', { count: selected.completionCount })
         : '';
-    this.qbDetailStatusEl.textContent = `Stav: ${st.label}${repeatText}`;
-    this.qbDetailQuoteEl.textContent = `${selected.giverQuote} ${selected.description}`;
+    this.qbDetailStatusEl.textContent = t('quest.status_line', {
+      status: st.label,
+      extra: repeatText,
+    });
+    this.qbDetailQuoteEl.innerHTML = `<div class="quest-story-quote">${selected.giverQuote}</div><div class="quest-story-desc">${selected.description}</div>`;
     this.qbDetailObjectivesEl.innerHTML = this.renderObjectivesHtml(selected);
-    this.qbDetailRewardEl.textContent = `Odměna: ${selected.rewardSummary}`;
+    this.qbDetailRewardEl.textContent = t('quest.reward_line', { reward: selected.rewardSummary });
 
     if (selected.status === 'available') {
       this.qbActionBtn.disabled = false;
-      this.qbActionBtn.textContent = '[Enter] Přijmout úkol';
+      this.qbActionBtn.textContent = t('quest.board.btn_accept');
     } else if (selected.status === 'ready') {
       this.qbActionBtn.disabled = false;
-      this.qbActionBtn.textContent = '[Enter] Odevzdat a získat odměnu';
+      this.qbActionBtn.textContent = t('quest.board.btn_turn_in');
     } else if (selected.status === 'active') {
       this.qbActionBtn.disabled = false;
-      this.qbActionBtn.textContent = '[Enter] Sledovat v HUDu';
+      this.qbActionBtn.textContent = t('quest.board.btn_track');
     } else {
       this.qbActionBtn.disabled = true;
-      this.qbActionBtn.textContent = '[ Dokončeno ]';
+      this.qbActionBtn.textContent = t('quest.board.btn_completed');
     }
 
     this.qbLogEl.textContent = `| ${this.qbLogMessage}`;
@@ -1393,48 +1459,48 @@ export class UIManager {
         return [
           {
             badge: '[1]',
-            label: 'Směnit za olej do lucerny (+1 ks)',
-            title: 'Doplnění paliva do lucerny',
-            effect: 'Cena: 1× surovina/relikvie -> 1× Lahvička oleje do lucerny',
-            btnText: '[Enter] Směnit za olej',
+            label: t('npc.trade.oil.label'),
+            title: t('npc.trade.oil.title'),
+            effect: t('npc.trade.oil.effect'),
+            btnText: t('npc.trade.oil.btn'),
           },
           {
             badge: '[2]',
-            label: 'Směnit za léčivé byliny (+45 HP)',
-            title: 'Sušené léčivé byliny z Vaelu',
-            effect: 'Cena: 1× surovina/relikvie -> 1× Léčivé byliny z Vaelu',
-            btnText: '[Enter] Směnit za byliny',
+            label: t('npc.trade.herbs.label'),
+            title: t('npc.trade.herbs.title'),
+            effect: t('npc.trade.herbs.effect'),
+            btnText: t('npc.trade.herbs.btn'),
           },
           {
             badge: '[3]',
-            label: 'Nákres: Kael’Varr (Železná výheň)',
-            title: 'Nákres cesty ke Kael’Varru',
-            effect: 'Cena: 1× surovina/relikvie -> Odhalí na mapě [M] železnou metropoli Kael’Varr',
-            btnText: '[Enter] Koupit nákres Kael’Varru',
+            label: t('npc.trade.kaelvarr.label'),
+            title: t('npc.trade.kaelvarr.title'),
+            effect: t('npc.trade.kaelvarr.effect'),
+            btnText: t('npc.trade.kaelvarr.btn'),
             citySketch: 'city_kaelvarr',
           },
           {
             badge: '[4]',
-            label: 'Nákres: Siltmoor (Kalný přístav)',
-            title: 'Nákres cesty k Siltmooru',
-            effect: 'Cena: 1× surovina/relikvie -> Odhalí na mapě [M] bažinný přístav Siltmoor',
-            btnText: '[Enter] Koupit nákres Siltmooru',
+            label: t('npc.trade.siltmoor.label'),
+            title: t('npc.trade.siltmoor.title'),
+            effect: t('npc.trade.siltmoor.effect'),
+            btnText: t('npc.trade.siltmoor.btn'),
             citySketch: 'city_siltmoor',
           },
           {
             badge: '[5]',
-            label: 'Nákres: Aethelgard (Bílý relikviář)',
-            title: 'Nákres cesty k Aethelgardu',
-            effect: 'Cena: 1× surovina/relikvie -> Odhalí na mapě [M] bílý Aethelgard',
-            btnText: '[Enter] Koupit nákres Aethelgardu',
+            label: t('npc.trade.aethelgard.label'),
+            title: t('npc.trade.aethelgard.title'),
+            effect: t('npc.trade.aethelgard.effect'),
+            btnText: t('npc.trade.aethelgard.btn'),
             citySketch: 'city_aethelgard',
           },
           {
             badge: '[6]',
-            label: 'Zpět k rozhovoru',
-            title: 'Návrat k tématům rozhovoru',
-            effect: 'Vrátí se k otázkám o historii Vaelu a přežití v divočině',
-            btnText: '[Enter] Zpět',
+            label: t('npc.trade.back.label'),
+            title: t('npc.trade.back.title'),
+            effect: t('npc.trade.back.effect'),
+            btnText: t('npc.trade.back.btn'),
           },
         ];
       }
@@ -1442,31 +1508,31 @@ export class UIManager {
       return [
         {
           badge: '[1]',
-          label: 'Směnit za olej do lucerny (+1 ks)',
-          title: 'Doplnění paliva do lucerny',
-          effect: 'Cena: 1× surovina/relikvie -> 1× Lahvička oleje do lucerny',
-          btnText: '[Enter] Směnit za olej',
+          label: t('npc.trade.oil.label'),
+          title: t('npc.trade.oil.title'),
+          effect: t('npc.trade.oil.effect'),
+          btnText: t('npc.trade.oil.btn'),
         },
         {
           badge: '[2]',
-          label: 'Směnit za léčivé byliny (+45 HP)',
-          title: 'Sušené léčivé byliny z Vaelu',
-          effect: 'Cena: 1× surovina/relikvie -> 1× Léčivé byliny z Vaelu',
-          btnText: '[Enter] Směnit za byliny',
+          label: t('npc.trade.herbs.label'),
+          title: t('npc.trade.herbs.title'),
+          effect: t('npc.trade.herbs.effect'),
+          btnText: t('npc.trade.herbs.btn'),
         },
         {
           badge: '[3]',
-          label: 'Získat nákres okolí (mapa M)',
-          title: 'Nákres zapomenutých ruin a oltářů',
-          effect: 'Cena: 1× surovina/relikvie -> Odhalí úsek mapy [M] a vyznačí [♦]',
-          btnText: '[Enter] Koupit nákres',
+          label: t('npc.trade.sketch.label'),
+          title: t('npc.trade.sketch.title'),
+          effect: t('npc.trade.sketch.effect'),
+          btnText: t('npc.trade.sketch.btn'),
         },
         {
           badge: '[4]',
-          label: 'Zpět k rozhovoru',
-          title: 'Návrat k tématům rozhovoru',
-          effect: 'Vrátí se k otázkám o historii Vaelu a přežití v divočině',
-          btnText: '[Enter] Zpět',
+          label: t('npc.trade.back.label'),
+          title: t('npc.trade.back.title'),
+          effect: t('npc.trade.back.effect'),
+          btnText: t('npc.trade.back.btn'),
         },
       ];
     }
@@ -1474,31 +1540,31 @@ export class UIManager {
     return [
       {
         badge: '[1]',
-        label: 'Vyptat se na starý Vael a pád říše',
-        title: 'Kronika starého Vaelu',
-        effect: 'Odhalí útržky historie říše před bitvou s nestvůrami',
-        btnText: '[Enter] Vyptat se',
+        label: t('npc.opt.history.label'),
+        title: t('npc.opt.history.title'),
+        effect: t('npc.opt.history.effect'),
+        btnText: t('npc.opt.history.btn'),
       },
       {
         badge: '[2]',
-        label: 'Zeptat se na přežití v divočině',
-        title: 'Rady pro přežití v divočině',
-        effect: 'Praktické rady k plížení [C], lucerně [F], hluku a brodění',
-        btnText: '[Enter] Vyslechnout radu',
+        label: t('npc.opt.survival.label'),
+        title: t('npc.opt.survival.title'),
+        effect: t('npc.opt.survival.effect'),
+        btnText: t('npc.opt.survival.btn'),
       },
       {
         badge: '[3]',
-        label: 'Obchodovat / Vyměnit zásoby',
-        title: 'Směna zásob u ohniště',
-        effect: 'Vyměň suroviny/relikvie za olej, byliny či nákres mapy [M]',
-        btnText: '[Enter] Otevřít směnu',
+        label: t('npc.opt.trade.label'),
+        title: t('npc.opt.trade.title'),
+        effect: t('npc.opt.trade.effect'),
+        btnText: t('npc.opt.trade.btn'),
       },
       {
         badge: '[4]',
-        label: 'Rozloučit se',
-        title: 'Odchod na stezku',
-        effect: 'Ukončí rozhovor s poutníkem',
-        btnText: '[Enter] Rozloučit se',
+        label: t('npc.opt.farewell.label'),
+        title: t('npc.opt.farewell.title'),
+        effect: t('npc.opt.farewell.effect'),
+        btnText: t('npc.opt.farewell.btn'),
       },
     ];
   }
@@ -1510,10 +1576,13 @@ export class UIManager {
     const options = this.getNpcDialogOptions();
     if (this.npcSelectedIndex >= options.length) this.npcSelectedIndex = 0;
 
-    this.npcModalTitleEl.textContent = `${npc.name.toUpperCase()} (${npc.glyph})`;
-    this.npcModalHintEl.textContent = `[1–${options.length} / Myš] Volba · [Esc] Rozloučit se`;
+    const npcName = getTravelerName(npc.role);
+    const npcTitle = getTravelerTitle(npc.role);
+
+    this.npcModalTitleEl.textContent = `${npcName.toUpperCase()} (${npc.glyph})`;
+    this.npcModalHintEl.textContent = t('npc.modal_hint', { count: options.length });
     this.npcPaneHeadingEl.textContent =
-      this.npcDialogMode === 'trade' ? '-- SMĚNA ZÁSOB --' : '-- TÉMA ROZHOVORU --';
+      this.npcDialogMode === 'trade' ? t('npc.pane_trade') : t('npc.pane_topics');
     this.npcListEl.innerHTML = '';
 
     options.forEach((opt, idx) => {
@@ -1531,26 +1600,29 @@ export class UIManager {
 
     const selected = options[this.npcSelectedIndex];
     this.npcDetailTitleEl.textContent = `${selected.badge} ${selected.title}`;
-    this.npcDetailMetaEl.textContent = `${npc.title} · Biom: ${BIOME_NAMES[npc.biome]}`;
-    this.npcDetailDescEl.textContent = this.npcSpokenQuote;
+    this.npcDetailMetaEl.textContent = t('npc.meta_biome', {
+      title: npcTitle,
+      biome: getBiomeName(npc.biome),
+    });
+    this.npcDetailDescEl.textContent = this.resolveNpcQuote(npc);
 
     const tradableCounts = TRADABLE_LOOT_IDS.map((id) => {
       const count = this.inventory.countItem(id);
       if (count <= 0) return null;
       const item = this.inventory.getItems().find((it) => it.id === id);
-      return `${item?.name ?? id} ×${count}`;
+      return `${item ? getItemName(item) : id} ×${count}`;
     }).filter((x): x is string => x !== null);
 
-    this.npcDetailStockEl.innerHTML = `<div class="q-obj-row">Nabízené suroviny/relikvie: ${
-      tradableCounts.length > 0 ? tradableCounts.join(' · ') : 'Žádné (najdi *, ,, U nebo ?)'
-    }</div>`;
+    this.npcDetailStockEl.innerHTML = `<div class="q-obj-row">${t('npc.stock_label', {
+      list: tradableCounts.length > 0 ? tradableCounts.join(' · ') : t('npc.stock_none'),
+    })}</div>`;
     this.npcDetailEffectEl.textContent = selected.effect;
 
     const backIndex = options.length - 1;
     const needsPayment = this.npcDialogMode === 'trade' && this.npcSelectedIndex < backIndex;
     const canAfford = !needsPayment || Boolean(this.inventory.findFirstTradable(TRADABLE_LOOT_IDS));
     this.npcActionBtn.disabled = !canAfford;
-    this.npcActionBtn.textContent = canAfford ? selected.btnText : '[ Chybí surovina či relikvie ]';
+    this.npcActionBtn.textContent = canAfford ? selected.btnText : t('npc.btn_no_payment');
     this.npcLogEl.textContent = `| ${this.npcLogMessage}`;
   }
 
@@ -1558,23 +1630,22 @@ export class UIManager {
     const npc = this.activeNpc;
     if (!npc) return;
 
+    const npcName = getTravelerName(npc.role);
+
     if (this.npcDialogMode === 'main') {
       if (this.npcSelectedIndex === 0) {
-        const historyLines = ROLE_HISTORY_LORE[npc.role];
-        this.npcSpokenQuote = historyLines[this.npcHistoryStep % historyLines.length];
+        this.npcQuoteState = { kind: 'history', index: this.npcHistoryStep };
         this.npcHistoryStep += 1;
-        this.npcLogMessage = `${npc.name} vzpomíná na starý Vael a pád říše.`;
+        this.npcLogMessage = t('npc.log.history', { name: npcName });
         this.audio.playUiClick('select');
         this.renderNpcDialogModal();
         return;
       }
 
       if (this.npcSelectedIndex === 1) {
-        const tips = ROLE_SURVIVAL_TIPS[npc.role];
-        const tip = tips[this.npcSurvivalStep % tips.length];
+        this.npcQuoteState = { kind: 'survival', index: this.npcSurvivalStep };
         this.npcSurvivalStep += 1;
-        this.npcSpokenQuote = `${tip} ${BIOME_WARNINGS[npc.biome]}`;
-        this.npcLogMessage = `${npc.name} ti poradil, jak přežít v divočině.`;
+        this.npcLogMessage = t('npc.log.survival', { name: npcName });
         this.audio.playUiClick('select');
         this.renderNpcDialogModal();
         return;
@@ -1584,16 +1655,16 @@ export class UIManager {
         this.npcDialogMode = 'trade';
         this.npcSelectedIndex = 0;
         const maxOpt = npc.role === 'cartographer' ? 5 : 3;
-        this.npcLogMessage = `Vyber zásoby ke směně [1–${maxOpt}] nebo [${maxOpt + 1}] pro návrat.`;
+        this.npcLogMessage = t('npc.log.trade_open', { max: maxOpt, back: maxOpt + 1 });
         this.audio.playUiClick('open');
         this.renderNpcDialogModal();
         return;
       }
 
-      const farewells = ROLE_FAREWELLS[npc.role];
+      const farewells = getTravelerFarewells(npc.role);
       const farewell = farewells[Math.floor(Math.random() * farewells.length)];
       this.closeOverlayToGame();
-      this.showToast(`${npc.name}: ${farewell}`, 3.0);
+      this.showToast(`${npcName}: ${farewell}`, 3.0);
       return;
     }
 
@@ -1603,7 +1674,7 @@ export class UIManager {
     if (this.npcSelectedIndex === backIndex) {
       this.npcDialogMode = 'main';
       this.npcSelectedIndex = 0;
-      this.npcLogMessage = 'Zvol odpověď [1–4], šipkami nebo myší. [Esc] zavře rozhovor.';
+      this.npcLogMessage = t('npc.default_log');
       this.audio.playUiClick('select');
       this.renderNpcDialogModal();
       return;
@@ -1612,17 +1683,20 @@ export class UIManager {
     const payment = this.inventory.findFirstTradable(TRADABLE_LOOT_IDS);
     if (!payment) {
       this.audio.playUiClick('close');
-      this.npcLogMessage = 'Nemáš žádný Žhavý uhlík, relikvii ani trofej ke směně.';
+      this.npcLogMessage = t('npc.log.no_payment');
       this.renderNpcDialogModal();
       return;
     }
 
+    const paymentName = getItemName(payment);
+
     if (this.npcSelectedIndex === 0) {
+      const oilName = getItemName(OIL_FLASK_TEMPLATE);
       this.inventory.removeItem(payment.id, 1);
       this.inventory.addItem(OIL_FLASK_TEMPLATE, 1);
       this.audio.playUiClick('potion');
-      this.npcLogMessage = `Směněno: 1× ${payment.name} za 1× ${OIL_FLASK_TEMPLATE.name}.`;
-      this.showToast(`Získáno: ${OIL_FLASK_TEMPLATE.name}`, 2.6);
+      this.npcLogMessage = t('npc.log.traded', { paid: paymentName, received: oilName });
+      this.showToast(t('toast.gained_item', { name: oilName }), 2.6);
       this.menuCallbacks.onTradeCompleted();
       this.renderInventoryModal();
       this.renderNpcDialogModal();
@@ -1630,11 +1704,12 @@ export class UIManager {
     }
 
     if (this.npcSelectedIndex === 1) {
+      const herbsName = getItemName(HEALING_HERBS_TEMPLATE);
       this.inventory.removeItem(payment.id, 1);
       this.inventory.addItem(HEALING_HERBS_TEMPLATE, 1);
       this.audio.playUiClick('potion');
-      this.npcLogMessage = `Směněno: 1× ${payment.name} za 1× ${HEALING_HERBS_TEMPLATE.name}.`;
-      this.showToast(`Získáno: ${HEALING_HERBS_TEMPLATE.name}`, 2.6);
+      this.npcLogMessage = t('npc.log.traded', { paid: paymentName, received: herbsName });
+      this.showToast(t('toast.gained_item', { name: herbsName }), 2.6);
       this.menuCallbacks.onTradeCompleted();
       this.renderInventoryModal();
       this.renderNpcDialogModal();
@@ -1645,17 +1720,23 @@ export class UIManager {
     const res = this.menuCallbacks.onRevealMapSketch(npc, chosenOpt?.citySketch);
     if (!res.poi) {
       this.audio.playUiClick('close');
-      this.npcLogMessage = 'Poutník v okolí nenašel žádné neznámé ruiny k zakreslení.';
+      this.npcLogMessage = t('npc.log.no_ruins');
       this.renderNpcDialogModal();
       return;
     }
     this.inventory.removeItem(payment.id, 1);
     this.audio.playParchmentRustle();
+    const poiName = getPoiName(res.poi.id);
     const dir = compassDir(this.player.x, this.player.y, res.poi.x, res.poi.y);
     const dist = Math.round(Math.hypot(res.poi.x - this.player.x, res.poi.y - this.player.y));
-    this.npcSpokenQuote = `„Zanesl jsem ti do mapy polohu lokace ${res.poi.name} směrem na ${dir} (~${dist} buněk). Otevři přehledovou mapu [M].“`;
-    this.npcLogMessage = `Nákres: ${res.poi.name} (${dir}, ~${dist} b.) · Odhaleno ${res.newlyRevealedChunks} úseků mapy.`;
-    this.showToast(`Nákres odhalil: ${res.poi.name} na mapě [M]`, 3.4);
+    this.npcQuoteState = { kind: 'sketch', poiId: res.poi.id, x: res.poi.x, y: res.poi.y };
+    this.npcLogMessage = t('npc.log.sketch', {
+      poi: poiName,
+      dir,
+      dist,
+      chunks: res.newlyRevealedChunks,
+    });
+    this.showToast(t('toast.sketch_revealed', { name: poiName }), 3.4);
     this.menuCallbacks.onTradeCompleted();
     this.renderInventoryModal();
     this.renderNpcDialogModal();
@@ -1671,11 +1752,11 @@ export class UIManager {
     list.forEach((q, idx) => {
       const row = document.createElement('button');
       row.type = 'button';
-      row.className = `inv-item-row${idx === this.journalSelectedIndex ? ' selected' : ''}`;
+      row.className = `inv-item-row quest-list-row${idx === this.journalSelectedIndex ? ' selected' : ''}`;
       const cursor = idx === this.journalSelectedIndex ? '>' : ' ';
       const st = questStatusTag(q.status);
       const pin = q.id === trackedId ? ' *' : '';
-      row.innerHTML = `<span class="inv-cursor">${cursor}</span> <span class="inv-badge ${st.cls}">${st.badge}</span> <span class="inv-name">${q.title}${pin}</span>`;
+      row.innerHTML = `<span class="inv-cursor">${cursor}</span><span class="inv-name">${q.title}${pin}</span><span class="quest-status-pill ${st.cls}">${st.tag}</span>`;
       row.addEventListener('click', () => {
         this.journalSelectedIndex = idx;
         this.audio.playUiClick('select');
@@ -1689,33 +1770,40 @@ export class UIManager {
 
     const st = questStatusTag(selected.status);
     this.journalDetailTitleEl.textContent = `${st.badge} ${selected.title}`;
-    const pinLabel = selected.id === trackedId ? ' · [SLEDOVÁN]' : '';
-    this.journalDetailStatusEl.textContent = `Stav: ${st.label}${pinLabel}`;
-    this.journalDetailDescEl.textContent = selected.description;
+    const pinLabel = selected.id === trackedId ? t('quest.journal.pinned_tag') : '';
+    this.journalDetailStatusEl.textContent = t('quest.status_line', {
+      status: st.label,
+      extra: pinLabel,
+    });
+    this.journalDetailDescEl.innerHTML = `<div class="quest-story-quote">${selected.giverQuote}</div><div class="quest-story-desc">${selected.description}</div>`;
     this.journalDetailObjectivesEl.innerHTML = this.renderObjectivesHtml(selected);
-    this.journalDetailRewardEl.textContent = `Odměna: ${selected.rewardSummary}`;
+    this.journalDetailRewardEl.textContent = t('quest.reward_line', {
+      reward: selected.rewardSummary,
+    });
 
     if (selected.status === 'active' || selected.status === 'ready') {
       this.journalTrackBtn.disabled = false;
       this.journalTrackBtn.textContent =
-        selected.id === trackedId ? '[ Sledováno v HUDu ]' : '[Enter] Sledovat v HUDu';
+        selected.id === trackedId
+          ? t('quest.journal.btn_tracked')
+          : t('quest.journal.btn_track');
     } else if (selected.status === 'available') {
       this.journalTrackBtn.disabled = true;
-      this.journalTrackBtn.textContent = 'Přijmi u úkolové tabule [!]';
+      this.journalTrackBtn.textContent = t('quest.journal.btn_accept_board');
     } else {
       this.journalTrackBtn.disabled = true;
-      this.journalTrackBtn.textContent = '[ Splněno ]';
+      this.journalTrackBtn.textContent = t('quest.journal.btn_completed');
     }
   }
 
   private getInventoryGroupLabel(category: InventoryItem['category']): string {
     if (category === 'weapon' || category === 'light' || category === 'relic') {
-      return 'VÝBAVA A RELIKVIE';
+      return t('inv.group.gear');
     }
     if (category === 'consumable') {
-      return 'ZÁSOBY A ELIXÍRY';
+      return t('inv.group.consumables');
     }
-    return 'ZÁPISY A TROFEJE';
+    return t('inv.group.lore_loot');
   }
 
   private renderInventoryModal(): void {
@@ -1727,7 +1815,7 @@ export class UIManager {
     if (items.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'inv-empty';
-      empty.textContent = '(Batoh zeje prázdnotou)';
+      empty.textContent = t('inv.empty_bag');
       this.invListEl.appendChild(empty);
     } else {
       let lastGroup = '';
@@ -1751,14 +1839,14 @@ export class UIManager {
         const glyphInfo = getItemAsciiGlyph(item);
         const isEquipped =
           item.category === 'relic' ? item.equipped !== false : Boolean(item.equipped);
-        const newTag = isNew ? `<span class="inv-tag-new">[NOVÉ]</span>` : '';
+        const newTag = isNew ? `<span class="inv-tag-new">${t('inv.tag_new')}</span>` : '';
         const rightTag = isEquipped
-          ? `<span class="inv-tag-equipped">[NASAZENO]</span>`
+          ? `<span class="inv-tag-equipped">${t('inv.tag_equipped')}</span>`
           : item.quantity > 1
             ? `<span class="inv-tag-qty">×${item.quantity}</span>`
             : '';
 
-        row.innerHTML = `<span class="inv-cursor">${cursor}</span><span class="inv-row-glyph" style="color:${glyphInfo.color}">${glyphInfo.glyph}</span><span class="inv-name">${item.name}</span>${newTag}${rightTag}`;
+        row.innerHTML = `<span class="inv-cursor">${cursor}</span><span class="inv-row-glyph" style="color:${glyphInfo.color}">${glyphInfo.glyph}</span><span class="inv-name">${getItemName(item)}</span>${newTag}${rightTag}`;
         row.addEventListener('mouseenter', () => {
           if (this.inventory.isItemNew(item.id)) {
             this.inventory.markItemSeen(item.id);
@@ -1783,26 +1871,28 @@ export class UIManager {
     const selected = this.inventory.getSelectedItem();
     if (!selected) {
       this.invDetailArtEl.innerHTML = '';
-      this.invDetailTitleEl.textContent = 'Žádný předmět';
+      this.invDetailTitleEl.textContent = t('inv.no_item');
       this.invDetailMetaEl.textContent = '';
-      this.invDetailDescEl.textContent = 'V batohu již nic nezbývá.';
+      this.invDetailDescEl.textContent = t('inv.no_item_desc');
       this.invDetailEffectEl.textContent = '';
       this.invActionBtn.disabled = true;
       this.invActionBtn.textContent = '[Enter] —';
     } else {
       const preview = getItemAsciiPreview(selected);
       this.invDetailArtEl.innerHTML = `<pre class="inv-ascii-art" style="color:${preview.color}">${preview.art}</pre>`;
-      this.invDetailTitleEl.textContent = selected.name;
+      this.invDetailTitleEl.textContent = getItemName(selected);
       const isEquipped =
         selected.category === 'relic' ? selected.equipped !== false : Boolean(selected.equipped);
       const statusPill = isEquipped
-        ? `<span class="inv-meta-equipped">NASAZENO</span>`
+        ? `<span class="inv-meta-equipped">${t('inv.meta_equipped')}</span>`
         : selected.quantity > 1
-          ? `<span class="inv-meta-qty">${selected.quantity} ks</span>`
-          : `<span class="inv-meta-muted">V batohu</span>`;
-      this.invDetailMetaEl.innerHTML = `<span class="inv-meta-cat">[${selected.symbol}] ${selected.categoryLabel}</span> · ${statusPill}`;
-      this.invDetailDescEl.textContent = selected.description;
-      this.invDetailEffectEl.textContent = `Efekt: ${selected.effectText}`;
+          ? `<span class="inv-meta-qty">${t('inv.meta_qty', { qty: selected.quantity })}</span>`
+          : `<span class="inv-meta-muted">${t('inv.meta_in_bag')}</span>`;
+      this.invDetailMetaEl.innerHTML = `<span class="inv-meta-cat">[${selected.symbol}] ${getItemCategoryLabel(selected)}</span> · ${statusPill}`;
+      this.invDetailDescEl.textContent = getItemDescription(selected);
+      this.invDetailEffectEl.textContent = t('inv.effect_prefix', {
+        text: getItemEffectText(selected),
+      });
       this.invActionBtn.disabled = false;
       this.invActionBtn.textContent = `[Enter] ${this.inventory.getActionLabel(selected)}`;
     }
@@ -1813,6 +1903,7 @@ export class UIManager {
 
   private renderInventoryStatsAndBuffs(force = false): void {
     const p = this.player;
+    const lang = getLanguage();
 
     const fmtBonus = (delta: number, digits = 0, unit = ''): string => {
       if (Math.abs(delta) < 0.05) return '';
@@ -1838,10 +1929,16 @@ export class UIManager {
     const armorPct = Math.round(p.damageReduction * 100);
     const armorVal = `${armorPct}%${fmtBonus(armorPct, 0, '%')}`;
 
+    const unitCells = t('stats.unit_cells');
+    const unitCellsSec = t('stats.unit_cells_sec');
+
     const light = p.getLanternLightRange();
     const lightVal = light.isLit
-      ? `${light.total.toFixed(1)} pol.${fmtBonus(light.bonus, 1)}`
-      : `Zhasnuta (${light.total.toFixed(1)} pol.${fmtBonus(light.bonus, 1)})`;
+      ? `${light.total.toFixed(1)} ${unitCells}${fmtBonus(light.bonus, 1)}`
+      : t('stats.light_off', {
+          val: light.total.toFixed(1),
+          bonus: fmtBonus(light.bonus, 1),
+        });
 
     const oilDrain = p.getEffectiveOilDrainRate();
     const oilEfficiencyPct = Math.round((1 - p.oilDrainMultiplier) * 100);
@@ -1852,26 +1949,27 @@ export class UIManager {
         : '';
     const oilVal = oilOn
       ? `${oilDrain.toFixed(2)}/s${oilBonusHtml}`
-      : `0.00/s <span class="inv-stat-muted">(zhasnuta)</span>`;
+      : `0.00/s <span class="inv-stat-muted">${t('stats.oil_off_suffix')}</span>`;
 
     const walk = p.getEffectiveWalkSpeed();
-    const walkVal = `${walk.total.toFixed(1)} pol./s${fmtBonus(walk.delta, 1)}`;
+    const walkVal = `${walk.total.toFixed(1)} ${unitCellsSec}${fmtBonus(walk.delta, 1)}`;
 
     const detect = p.getEnemyDetectionInfo(this.lastAmbientContext);
     const detectDelta = detect.total - detect.base;
     const detectCls =
       detectDelta <= -0.5 ? 'inv-stat-bonus' : detectDelta >= 0.5 ? 'inv-stat-penalty' : 'inv-stat-muted';
-    const detectVal = `${detect.total.toFixed(1)} pol. <span class="${detectCls}">(${detect.label})</span>`;
+    const detectVal = `${detect.total.toFixed(1)} ${unitCells} <span class="${detectCls}">(${detect.label})</span>`;
 
     const effectSigParts: string[] = [];
     const effectRows: string[] = [];
+    const passivePrefixRe = new RegExp(t('stats.passive_prefix_regex'), 'i');
 
     for (const item of this.inventory.getItems()) {
       if (item.category === 'relic' && item.quantity > 0 && item.equipped !== false) {
-        const desc = item.effectText.replace(/^Pasivní:\s*/i, '');
+        const desc = getItemEffectText(item).replace(passivePrefixRe, '');
         effectSigParts.push(`r:${item.id}`);
         effectRows.push(
-          `<div class="inv-buff-row inv-buff-relic"><div class="inv-buff-head"><span class="inv-buff-tag">[${item.symbol}]</span> <span class="inv-buff-name">${item.name}</span> <span class="inv-buff-meta">Relikvie</span></div><div class="inv-buff-desc">${desc}</div></div>`
+          `<div class="inv-buff-row inv-buff-relic"><div class="inv-buff-head"><span class="inv-buff-tag">[${item.symbol}]</span> <span class="inv-buff-name">${getItemName(item)}</span> <span class="inv-buff-meta">${t('stats.buff_relic_meta')}</span></div><div class="inv-buff-desc">${desc}</div></div>`
         );
       }
     }
@@ -1880,37 +1978,37 @@ export class UIManager {
       const secs = Math.max(1, Math.ceil(eff.remainingSeconds));
       const cls = eff.kind === 'buff' ? 'inv-buff-pos' : 'inv-buff-neg';
       const tag = eff.kind === 'buff' ? '[+]' : '[-]';
-      effectSigParts.push(`e:${eff.id}:${secs}`);
+      const disp = getStatusEffectDisplay(eff);
+      effectSigParts.push(`e:${eff.id}:${eff.sourceItemId ?? ''}:${secs}`);
       effectRows.push(
-        `<div class="inv-buff-row ${cls}"><div class="inv-buff-head"><span class="inv-buff-tag">${tag}</span> <span class="inv-buff-name">${eff.name}</span> <span class="inv-buff-time">${secs}s</span></div><div class="inv-buff-desc">${eff.description}</div></div>`
+        `<div class="inv-buff-row ${cls}"><div class="inv-buff-head"><span class="inv-buff-tag">${tag}</span> <span class="inv-buff-name">${disp.name}</span> <span class="inv-buff-time">${secs}s</span></div><div class="inv-buff-desc">${disp.description}</div></div>`
       );
     }
 
     if (p.exhausted) {
       effectSigParts.push('exhausted');
       effectRows.push(
-        `<div class="inv-buff-row inv-buff-neg"><div class="inv-buff-head"><span class="inv-buff-tag">[!]</span> <span class="inv-buff-name">Vyčerpaný</span> <span class="inv-buff-time">do 18 ST</span></div><div class="inv-buff-desc">Nelze sprintovat ani útočit, dokud se výdrž neobnoví.</div></div>`
+        `<div class="inv-buff-row inv-buff-neg"><div class="inv-buff-head"><span class="inv-buff-tag">[!]</span> <span class="inv-buff-name">${t('buff.exhausted.name')}</span> <span class="inv-buff-time">${t('buff.exhausted.time')}</span></div><div class="inv-buff-desc">${t('buff.exhausted.desc')}</div></div>`
       );
     }
 
     if (p.inColdBiome) {
       effectSigParts.push('cold');
       effectRows.push(
-        `<div class="inv-buff-row inv-buff-neg"><div class="inv-buff-head"><span class="inv-buff-tag">[!]</span> <span class="inv-buff-name">Mráz</span> <span class="inv-buff-time">zóna</span></div><div class="inv-buff-desc">-58 % rychlost regenerace výdrže.</div></div>`
+        `<div class="inv-buff-row inv-buff-neg"><div class="inv-buff-head"><span class="inv-buff-tag">[!]</span> <span class="inv-buff-name">${t('buff.frost.name')}</span> <span class="inv-buff-time">${t('buff.frost.time')}</span></div><div class="inv-buff-desc">${t('buff.frost.desc')}</div></div>`
       );
     }
 
     if (p.isSneaking) {
       effectSigParts.push(`sneak:${p.inUndergrowth ? 1 : 0}`);
-      const sneakDesc = p.inUndergrowth
-        ? '-70 % dosah odhalení v porostu · pomalejší chůze'
-        : '-44 % dosah odhalení · pomalejší chůze';
+      const sneakName = p.inUndergrowth ? t('buff.sneak.name_cover') : t('buff.sneak.name');
+      const sneakDesc = p.inUndergrowth ? t('buff.sneak.desc_cover') : t('buff.sneak.desc');
       effectRows.push(
-        `<div class="inv-buff-row inv-buff-pos"><div class="inv-buff-head"><span class="inv-buff-tag">[C]</span> <span class="inv-buff-name">Plížení${p.inUndergrowth ? ' (Kryt)' : ''}</span></div><div class="inv-buff-desc">${sneakDesc}</div></div>`
+        `<div class="inv-buff-row inv-buff-pos"><div class="inv-buff-head"><span class="inv-buff-tag">[C]</span> <span class="inv-buff-name">${sneakName}</span></div><div class="inv-buff-desc">${sneakDesc}</div></div>`
       );
     }
 
-    const signature = `${hpVal}|${stVal}|${stRegenVal}|${dmgVal}|${armorVal}|${lightVal}|${oilVal}|${walkVal}|${detectVal}|${effectSigParts.join(',')}`;
+    const signature = `${lang}|${hpVal}|${stVal}|${stRegenVal}|${dmgVal}|${armorVal}|${lightVal}|${oilVal}|${walkVal}|${detectVal}|${effectSigParts.join(',')}`;
     if (!force && signature === this.lastInvStatsSignature) {
       return;
     }
@@ -1919,7 +2017,7 @@ export class UIManager {
     const buffsHtml =
       effectRows.length > 0
         ? effectRows.join('')
-        : `<div class="inv-buff-empty">Žádné aktivní efekty</div>`;
+        : `<div class="inv-buff-empty">${t('stats.buff_empty')}</div>`;
 
     const statLine = (label: string, val: string): string =>
       `<div class="inv-stat-line"><span class="inv-stat-label">${label}</span><span class="inv-stat-val">${val}</span></div>`;
@@ -1927,32 +2025,32 @@ export class UIManager {
     this.invStatsPanelEl.innerHTML = `
       <div class="ascii-box">
         <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
-        <div class="ascii-box-title"><span class="ascii-pipe">|</span><span>STATISTIKY POSTAVY</span><span class="ascii-pipe">|</span></div>
+        <div class="ascii-box-title"><span class="ascii-pipe">|</span><span>${t('stats.heading')}</span><span class="ascii-pipe">|</span></div>
         <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
         <div class="ascii-box-frame">
           <div class="inv-stat-group">
-            ${statLine('Zdraví (HP)', hpVal)}
-            ${statLine('Výdrž (ST)', stVal)}
-            ${statLine('Regen výdrže', stRegenVal)}
+            ${statLine(t('stats.hp'), hpVal)}
+            ${statLine(t('stats.stamina'), stVal)}
+            ${statLine(t('stats.stamina_regen'), stRegenVal)}
           </div>
           <div class="inv-stat-sep"></div>
           <div class="inv-stat-group">
-            ${statLine('Útok (DMG)', dmgVal)}
-            ${statLine('Odolnost', armorVal)}
+            ${statLine(t('stats.attack'), dmgVal)}
+            ${statLine(t('stats.defense'), armorVal)}
           </div>
           <div class="inv-stat-sep"></div>
           <div class="inv-stat-group">
-            ${statLine('Dosah světla', lightVal)}
-            ${statLine('Spotřeba oleje', oilVal)}
-            ${statLine('Rychlost chůze', walkVal)}
-            ${statLine('Odhalení', detectVal)}
+            ${statLine(t('stats.light_range'), lightVal)}
+            ${statLine(t('stats.oil_drain'), oilVal)}
+            ${statLine(t('stats.walk_speed'), walkVal)}
+            ${statLine(t('stats.detection'), detectVal)}
           </div>
         </div>
         <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
       </div>
       <div class="ascii-box">
         <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
-        <div class="ascii-box-title"><span class="ascii-pipe">|</span><span>AKTIVNÍ EFEKTY / BUFFY</span><span class="ascii-pipe">|</span></div>
+        <div class="ascii-box-title"><span class="ascii-pipe">|</span><span>${t('stats.buffs_heading')}</span><span class="ascii-pipe">|</span></div>
         <div class="ascii-rule-bar"><span>+</span><span class="rule-fill"></span><span>+</span></div>
         <div class="ascii-box-frame inv-buff-list">
           ${buffsHtml}
@@ -1977,6 +2075,8 @@ export class UIManager {
     dt: number,
     chartedMarkers: readonly ChartedMarker[] = []
   ): void {
+    const lang = getLanguage();
+
     if (this.toastTimer > 0) {
       this.toastTimer -= dt;
       if (this.toastTimer <= 0) {
@@ -2005,14 +2105,15 @@ export class UIManager {
       const nearbyRelic = this.quests.getNearbyRelic(this.player.x, this.player.y);
       const nearbyNpc = world.getNearbyTraveler(this.player.x, this.player.y);
       if (nearbyRelic) {
-        promptText = `[E] Sebrat relikvii: ${nearbyRelic.name}`;
+        promptText = t('prompt.collect_relic', { name: getItemName(nearbyRelic) });
       } else if (nearbyNpc) {
-        promptText = `[E] Promluvit: ${nearbyNpc.name} (${nearbyNpc.glyph})`;
+        promptText = t('prompt.talk_npc', {
+          name: getTravelerName(nearbyNpc.role),
+          glyph: nearbyNpc.glyph,
+        });
       } else if (world.isNearQuestGiver(this.player.x, this.player.y)) {
         const hasReady = this.quests.getQuests().some((q) => q.status === 'ready');
-        promptText = hasReady
-          ? '[E] Promluvit / Odevzdat splněný úkol [!]'
-          : '[E] Prohlédnout úkolovou tabuli [!]';
+        promptText = hasReady ? t('prompt.quest_turn_in') : t('prompt.quest_board');
       }
     }
 
@@ -2030,7 +2131,8 @@ export class UIManager {
     const nearbySign =
       this.activeModal === 'none' ? world.getNearbySignpost(this.player.x, this.player.y, 4.4) : null;
     if (nearbySign) {
-      const signText = `[ ROZCESTNÍK ]  ${nearbySign.lines.join('  ·  ')}`;
+      const lines = nearbySign.resolveLines ? nearbySign.resolveLines() : nearbySign.lines;
+      const signText = `${t('signpost.header')}  ${lines.join('  ·  ')}`;
       if (signText !== this.lastSignpostText) {
         this.lastSignpostText = signText;
         this.signpostEl.textContent = signText;
@@ -2056,32 +2158,36 @@ export class UIManager {
     const envText = `${environment.getClockText()} · ${environment.getPhaseLabel()} · ${environment.getWeatherLabel()}`;
 
     const tags: string[] = [];
-    if (this.player.isDead) tags.push('PADL');
-    else if (this.player.isDashing) tags.push('ÚSKOK');
-    else if (oil <= 0) tags.push('BEZ OLEJE');
-    else if (lanternLit) tags.push('LUCERNA');
-    else tags.push('LUCERNA ZHASNUTA');
+    if (this.player.isDead) tags.push(t('hud.tag.fallen'));
+    else if (this.player.isDashing) tags.push(t('hud.tag.dash'));
+    else if (oil <= 0) tags.push(t('hud.tag.no_oil'));
+    else if (lanternLit) tags.push(t('hud.tag.lantern'));
+    else tags.push(t('hud.tag.lantern_off'));
     if (!this.player.isDead) {
       if (this.player.isSneaking) {
-        tags.push(this.player.inUndergrowth ? 'PLÍŽENÍ (KRYT)' : 'PLÍŽENÍ');
+        tags.push(this.player.inUndergrowth ? t('hud.tag.sneak_cover') : t('hud.tag.sneak'));
       } else if (this.player.isSprinting) {
-        tags.push('BĚH');
+        tags.push(t('hud.tag.sprint'));
       } else if (this.player.exhausted) {
-        tags.push('VYČERPÁN');
+        tags.push(t('hud.tag.exhausted'));
       }
     }
-    if (this.player.inColdBiome) tags.push('MRÁZ');
-    if (this.player.hasTorchLit) tags.push('POCHODEŇ');
-    if (this.player.equippedWeapon) tags.push('MEČ');
+    if (this.player.inColdBiome) tags.push(t('hud.tag.frost'));
+    if (this.player.hasTorchLit) tags.push(t('hud.tag.torch'));
+    if (this.player.equippedWeapon) tags.push(t('hud.tag.blade'));
     if (this.player.activeRelicCount > 0) {
-      tags.push(this.player.activeRelicCount > 1 ? `RELIKVIE ×${this.player.activeRelicCount}` : 'RELIKVIE');
+      tags.push(
+        this.player.activeRelicCount > 1
+          ? t('hud.tag.relic_multi', { count: this.player.activeRelicCount })
+          : t('hud.tag.relic')
+      );
     }
-    if (isMuted) tags.push('MUTE');
+    if (isMuted) tags.push(t('hud.tag.mute'));
     const statusText = tags.join(' · ');
     const sneaking = !this.player.isDead && this.player.isSneaking;
     const hasNewInv = this.inventory.hasNewItems();
 
-    const signature = `${zone}|${x}|${y}|${hp}/${maxHp}|${st}/${maxSt}|${oil}|${lanternLit}|${isMuted}|${envText}|${statusText}|${zoomStr}|${this.player.exhausted}|${this.player.inColdBiome}|${sneaking}|${this.player.inUndergrowth}|${this.player.activeRelicCount}|${hasNewInv}`;
+    const signature = `${lang}|${zone}|${x}|${y}|${hp}/${maxHp}|${st}/${maxSt}|${oil}|${lanternLit}|${isMuted}|${envText}|${statusText}|${zoomStr}|${this.player.exhausted}|${this.player.inColdBiome}|${sneaking}|${this.player.inUndergrowth}|${this.player.activeRelicCount}|${hasNewInv}`;
     if (signature !== this.lastHudSignature) {
       this.lastHudSignature = signature;
 
@@ -2099,23 +2205,25 @@ export class UIManager {
       this.hudEnvEl.textContent = envText;
       this.hudStatusEl.textContent = statusText;
       this.hudZoomEl.textContent = zoomStr;
-      this.hudMuteEl.innerHTML = isMuted ? '<kbd>[N]</kbd> Mute (Ztlumeno)' : '<kbd>[N]</kbd> Mute';
+      this.hudMuteEl.innerHTML = isMuted
+        ? `<kbd>[N]</kbd> ${t('hud.ctrl.mute_active')}`
+        : `<kbd>[N]</kbd> ${t('hud.ctrl.mute')}`;
       this.hudMuteEl.classList.toggle('ctrl-muted', isMuted);
       this.hudStealthEl.innerHTML = sneaking
-        ? '<kbd>[C/Shift]</kbd> PLÍŽENÍ'
-        : '<kbd>[C/Shift]</kbd> Plížení';
+        ? `<kbd>[C/Shift]</kbd> ${t('hud.ctrl.sneak_active')}`
+        : `<kbd>[C/Shift]</kbd> ${t('hud.ctrl.sneak')}`;
       this.hudStealthEl.classList.toggle('ctrl-stealth-active', sneaking);
       this.hudInvEl.innerHTML = hasNewInv
-        ? '<kbd>[I*]</kbd> Inventář'
-        : '<kbd>[I]</kbd> Inventář';
+        ? `<kbd>[I*]</kbd> ${t('hud.ctrl.inventory')}`
+        : `<kbd>[I]</kbd> ${t('hud.ctrl.inventory')}`;
       this.hudInvEl.classList.toggle('ctrl-inv-new', hasNewInv);
     }
 
     // Update top-right Quest Tracker HUD
     const tracker = this.quests.getHudTrackerInfo(this.player.x, this.player.y, world);
     const qSig = tracker
-      ? `${tracker.title}|${tracker.progressLine}|${tracker.navLine}|${tracker.isReady}`
-      : `NONE|${Math.round(this.player.x / 4)}|${Math.round(this.player.y / 4)}`;
+      ? `${lang}|${tracker.title}|${tracker.progressLine}|${tracker.navLine}|${tracker.isReady}`
+      : `${lang}|NONE|${Math.round(this.player.x / 4)}|${Math.round(this.player.y / 4)}`;
     if (qSig !== this.lastQuestSignature) {
       this.lastQuestSignature = qSig;
       if (tracker) {
@@ -2125,12 +2233,15 @@ export class UIManager {
         this.hudQuestNavEl.textContent = tracker.navLine;
       } else {
         const allCompleted = this.quests.getQuests().every((q) => q.status === 'completed');
-        this.hudQuestTitleEl.textContent = allCompleted ? 'Všechny hlavní úkoly splněny' : 'Žádný aktivní úkol';
+        this.hudQuestTitleEl.textContent = allCompleted
+          ? t('hud.quest_all_done')
+          : t('hud.quest_none');
         this.hudQuestTitleEl.classList.remove('quest-ready-title');
-        this.hudQuestProgEl.textContent = 'Úkolová tabule [!] na mýtině';
+        this.hudQuestProgEl.textContent = t('hud.quest_board_hint');
         const dir = compassDir(this.player.x, this.player.y, world.questGiver.x, world.questGiver.y);
         const dist = Math.round(Math.hypot(world.questGiver.x - this.player.x, world.questGiver.y - this.player.y));
-        this.hudQuestNavEl.textContent = dist <= 5 ? '[E] Prohlédnout tabuli' : `Tabule: ${dir} · ~${dist} buněk`;
+        this.hudQuestNavEl.textContent =
+          dist <= 5 ? t('hud.quest_board_inspect') : t('hud.quest_board_dir', { dir, dist });
       }
     }
 

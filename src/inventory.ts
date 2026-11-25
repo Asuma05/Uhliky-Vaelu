@@ -1,3 +1,4 @@
+import { getItemEffectText, getItemLoreText, getItemName, t } from './i18n';
 import type { InventoryItem } from './types';
 import type { Player } from './player';
 
@@ -329,13 +330,24 @@ export class Inventory {
 
   public getActionLabel(item: InventoryItem): string {
     if (item.category === 'relic') {
-      return item.equipped !== false ? 'Sundat' : 'Nasadit';
+      return item.equipped !== false ? t('inv.action.unequip') : t('inv.action.equip');
     }
     if (item.equipable) {
       if (item.category === 'light') {
-        return item.equipped ? 'Uhasit' : 'Zapálit';
+        return item.equipped ? t('inv.action.extinguish') : t('inv.action.light');
       }
-      return item.equipped ? 'Sundat' : 'Nasadit';
+      return item.equipped ? t('inv.action.unequip') : t('inv.action.equip');
+    }
+    if (item.category === 'consumable') {
+      if (item.oilAmount) return t('inv.action.refill');
+      if (item.id === 'healing-herbs') return t('inv.action.use');
+      return t('inv.action.drink');
+    }
+    if (item.category === 'lore') {
+      return t('inv.action.read');
+    }
+    if (item.category === 'loot') {
+      return t('inv.action.inspect');
     }
     return item.actionLabel;
   }
@@ -343,33 +355,38 @@ export class Inventory {
   public useSelectedItem(player: Player): ItemActionResult {
     const item = this.getSelectedItem();
     if (!item) {
-      return { ok: false, message: 'Batoh je prázdný.' };
+      return { ok: false, message: t('inv.msg.empty') };
     }
+
+    const displayName = getItemName(item);
+    const displayEffect = getItemEffectText(item);
+    const displayLore = getItemLoreText(item);
 
     if (item.category === 'consumable' && item.healAmount) {
       if (player.hp >= player.maxHp) {
         return {
           ok: false,
-          message: 'Zdraví je již plné — odvar není třeba plýtvat.',
+          message: t('inv.msg.hp_full'),
         };
       }
       const healed = player.heal(item.healAmount);
       const buffName =
         item.id === 'healing-herbs'
-          ? 'Účinek léčivých bylin'
+          ? t('buff.elixir.herbs.name')
           : item.id === 'mire-elixir'
-            ? 'Bahenní vitalita'
-            : 'Síla karmínového odvaru';
+            ? t('buff.elixir.mire.name')
+            : t('buff.elixir.crimson.name');
       const duration = item.id === 'mire-elixir' ? 18 : 15;
       player.addOrRefreshEffect({
         id: 'elixir-regen',
         name: buffName,
-        description: '+1.5 HP/s · +15 % regenerace výdrže',
+        description: t('buff.elixir.desc'),
         kind: 'buff',
         remainingSeconds: duration,
         durationSeconds: duration,
         hpRegenPerSec: 1.5,
         staminaRegenBonus: 0.15,
+        sourceItemId: item.id,
       });
       item.quantity -= 1;
       if (item.quantity <= 0) {
@@ -380,7 +397,7 @@ export class Inventory {
       }
       return {
         ok: true,
-        message: `Použil jsi ${item.name.toLowerCase()} (+${healed} HP).`,
+        message: t('inv.msg.used_heal', { name: displayName, amount: healed }),
       };
     }
 
@@ -388,7 +405,7 @@ export class Inventory {
       if (player.oil >= player.maxOil) {
         return {
           ok: false,
-          message: 'Nádržka lucerny je již plná oleje.',
+          message: t('inv.msg.oil_full'),
         };
       }
       const refilled = player.refillOil(item.oilAmount);
@@ -401,7 +418,7 @@ export class Inventory {
       }
       return {
         ok: true,
-        message: `Dolil jsi olej do lucerny (+${refilled} oleje).`,
+        message: t('inv.msg.refilled_oil', { amount: refilled }),
       };
     }
 
@@ -412,8 +429,8 @@ export class Inventory {
       return {
         ok: true,
         message: nextState
-          ? `Nasadil jsi relikvii ${item.name}. ${item.effectText}`
-          : `Sundal jsi relikvii ${item.name}. Její pasivní bonus byl pozastaven.`,
+          ? t('inv.msg.relic_equipped', { name: displayName, effect: displayEffect })
+          : t('inv.msg.relic_unequipped', { name: displayName }),
       };
     }
 
@@ -432,19 +449,19 @@ export class Inventory {
         return {
           ok: true,
           message: nextState
-            ? `Zapálil jsi ${item.name.toLowerCase()}. Okolí ozářil slabý plamen.`
-            : `Uhasil jsi ${item.name.toLowerCase()}. Tma se opět přiblížila.`,
+            ? t('inv.msg.torch_lit', { name: displayName })
+            : t('inv.msg.torch_out', { name: displayName }),
         };
       }
 
       if (item.category === 'weapon') {
-        player.equippedWeapon = nextState ? item.name : null;
+        player.equippedWeapon = nextState ? displayName : null;
         player.weaponAttackBonus = nextState ? (item.attackBonus ?? 0) : 0;
         return {
           ok: true,
           message: nextState
-            ? `Nasadil jsi ${item.name} (+${item.attackBonus ?? 0} útok).`
-            : `Uložil jsi ${item.name} zpět do batohu.`,
+            ? t('inv.msg.weapon_equipped', { name: displayName, bonus: item.attackBonus ?? 0 })
+            : t('inv.msg.weapon_unequipped', { name: displayName }),
         };
       }
     }
@@ -452,17 +469,17 @@ export class Inventory {
     if (item.category === 'loot') {
       return {
         ok: true,
-        message: `Prohlédl sis ${item.name.toLowerCase()} — temná trofej z padlého nepřítele.`,
+        message: t('inv.msg.inspected_loot', { name: displayName }),
       };
     }
 
-    if (item.category === 'lore' && item.loreText) {
+    if (item.category === 'lore' && displayLore) {
       return {
         ok: true,
-        message: item.loreText,
+        message: displayLore,
       };
     }
 
-    return { ok: false, message: `Předmět ${item.name} nelze použít.` };
+    return { ok: false, message: t('inv.msg.cannot_use', { name: displayName }) };
   }
 }

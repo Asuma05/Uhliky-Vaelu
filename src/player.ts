@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import type { Inventory } from './inventory';
 import type {
   ActiveStatusEffect,
@@ -179,6 +180,7 @@ export class Player {
       existing.staminaRegenBonus = effect.staminaRegenBonus;
       existing.walkSpeedMultiplier = effect.walkSpeedMultiplier;
       existing.hpRegenPerSec = effect.hpRegenPerSec;
+      existing.sourceItemId = effect.sourceItemId;
     } else {
       this.activeEffects.push({ ...effect });
     }
@@ -270,11 +272,13 @@ export class Player {
     const total = Math.max(3.2, Math.min(30, base * mult));
     const reasons: string[] = [];
     if (this.isSneaking) {
-      reasons.push(this.inUndergrowth ? 'plížení C + kryt' : 'plížení C');
+      reasons.push(
+        this.inUndergrowth ? t('stats.detect.sneak_cover') : t('stats.detect.sneak')
+      );
     } else if (this.inUndergrowth) {
-      reasons.push('kryt v porostu');
+      reasons.push(t('stats.detect.cover'));
     }
-    reasons.push(lanternLit ? 'světlo' : 'zhasnuto');
+    reasons.push(lanternLit ? t('stats.detect.lit') : t('stats.detect.unlit'));
 
     return { base, total, multiplier: mult, label: reasons.join(', ') };
   }
@@ -487,8 +491,8 @@ export class Player {
     if (this.inWater) {
       this.addOrRefreshEffect({
         id: 'wet',
-        name: 'Promočený',
-        description: '-15 % regenerace výdrže · -10 % rychlost chůze',
+        name: t('buff.wet.name'),
+        description: t('buff.wet.desc'),
         kind: 'debuff',
         remainingSeconds: 12,
         durationSeconds: 12,
@@ -509,8 +513,8 @@ export class Player {
         this.removeEffect('wet');
         this.addOrRefreshEffect({
           id: 'warmed',
-          name: 'Ohřátý u ohniště',
-          description: '+20 % regenerace výdrže',
+          name: t('buff.warmed.name'),
+          description: t('buff.warmed.desc'),
           kind: 'buff',
           remainingSeconds: 18,
           durationSeconds: 18,
@@ -576,12 +580,12 @@ export class Player {
           this.exhausted = true;
           this.isSprinting = false;
           if (this.waterExhaustToastCooldown <= 0) {
-            onWaterExhausted?.('Jsi vyčerpaný proudem!');
+            onWaterExhausted?.(t('toast.water_exhausted'));
             this.waterExhaustToastCooldown = 3.2;
           }
         }
       } else if (this.exhausted && this.waterExhaustToastCooldown <= 0) {
-        onWaterExhausted?.('Jsi vyčerpaný proudem!');
+        onWaterExhausted?.(t('toast.water_exhausted'));
         this.waterExhaustToastCooldown = 3.2;
       }
     } else if (this.isSprinting) {
@@ -652,7 +656,7 @@ export class Player {
         this.isSprinting = false;
         this.isSneaking = false;
       }
-      onHazardDamage?.(dmg, 'Láva');
+      onHazardDamage?.(dmg, t('combat.lava'));
     }
   }
 

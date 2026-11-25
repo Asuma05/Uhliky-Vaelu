@@ -1,6 +1,7 @@
 import type { CombatSystem } from './combat';
 import type { Enemy, EnemyManager } from './enemies';
 import type { AmbientLightProfile, EnvironmentSystem } from './environment';
+import { getItemName, getTravelerName } from './i18n';
 import type { CellIllumination, LightingSystem } from './lighting';
 import type { Player } from './player';
 import type { QuestManager } from './quests';
@@ -3080,7 +3081,7 @@ export class AsciiRenderer {
         ctx.font = `600 9px ${this.microFontStack}`;
         ctx.textAlign = 'center';
         ctx.fillStyle = relic.color;
-        ctx.fillText(relic.name, cx, cy - this.cellHeight * 1.1);
+        ctx.fillText(getItemName(relic), cx, cy - this.cellHeight * 1.1);
         ctx.textAlign = 'left';
       }
     }
@@ -3293,11 +3294,12 @@ export class AsciiRenderer {
       ctx.fillText(npc.glyph, cx, cy + 0.5);
 
       if (Math.hypot(npc.x - player.x, npc.y - player.y) <= 11) {
+        const npcName = getTravelerName(npc.role);
         ctx.font = `600 9px ${this.microFontStack}`;
         ctx.fillStyle = '#09090b';
-        ctx.fillText(npc.name, cx + 1, cy - this.cellHeight * 1.15 + 1);
+        ctx.fillText(npcName, cx + 1, cy - this.cellHeight * 1.15 + 1);
         ctx.fillStyle = '#f0d48c';
-        ctx.fillText(npc.name, cx, cy - this.cellHeight * 1.15);
+        ctx.fillText(npcName, cx, cy - this.cellHeight * 1.15);
       }
     }
 

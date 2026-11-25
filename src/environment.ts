@@ -1,4 +1,5 @@
-import type { WeatherKind } from './types';
+import { getWeatherLabel as getLocalizedWeatherLabel, t } from './i18n';
+import type { BiomeKind, WeatherKind } from './types';
 
 export interface RainDrop {
   x: number;
@@ -48,14 +49,6 @@ export interface AmbientLightProfile {
   /** Screen-edge dark vignette opacity [0.0 during bright sun .. 0.78 at deep night] */
   vignetteOpacity: number;
 }
-
-const WEATHER_LABELS: Record<WeatherKind, string> = {
-  sunny: 'Jasno',
-  overcast: 'Šero',
-  fog: 'Mlha',
-  rain: 'Déšť',
-  storm: 'Déšť a mlha',
-};
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -131,14 +124,14 @@ export class EnvironmentSystem {
     }
   }
 
-  public update(dt: number, zoneName: string): void {
+  public update(dt: number, biome: BiomeKind): void {
     // 1. Advance smooth Day/Night clock
     this.timeOfDay = (this.timeOfDay + dt / this.dayLengthSeconds) % 1;
 
     // 2. Random dynamic weather scheduler
     this.weatherTimer -= dt;
     if (this.weatherTimer <= 0) {
-      this.rollRandomWeather(zoneName);
+      this.rollRandomWeather(biome);
       this.weatherTimer = 26 + Math.random() * 24;
     }
 
@@ -150,8 +143,7 @@ export class EnvironmentSystem {
 
     // Only keep marsh/blood-forest ambient mist when NOT in bright sunny weather (sun clears the fog!)
     const marshMistBonus =
-      (zoneName === 'Mrtvá bažina' || zoneName === 'Prokletý krvavý les') &&
-      this.targetWeather !== 'sunny'
+      (biome === 'marsh' || biome === 'blood_forest') && this.targetWeather !== 'sunny'
         ? 0.35
         : 0;
     const targetFog = Math.min(1, Math.max(wantFog, marshMistBonus));
@@ -217,12 +209,9 @@ export class EnvironmentSystem {
     }
   }
 
-  private rollRandomWeather(zoneName: string): void {
+  private rollRandomWeather(biome: BiomeKind): void {
     const r = Math.random();
-    const gloomyZone =
-      zoneName === 'Mrtvá bažina' ||
-      zoneName === 'Prokletý krvavý les' ||
-      zoneName === 'Popelavá pustina';
+    const gloomyZone = biome === 'marsh' || biome === 'blood_forest' || biome === 'ash';
 
     if (gloomyZone) {
       // Even gloomier regions still get occasional bright sunbreaks
@@ -244,13 +233,13 @@ export class EnvironmentSystem {
   /** Cycles time of day across 4 distinct moods (Day -> Dusk -> Deep Night -> Dawn) */
   public cycleTimeOfDay(): string {
     if (this.timeOfDay >= 0.32 && this.timeOfDay < 0.68) {
-      this.timeOfDay = 0.76; // Soumrak
+      this.timeOfDay = 0.76; // Dusk
     } else if (this.timeOfDay >= 0.68 && this.timeOfDay < 0.88) {
-      this.timeOfDay = 0.02; // Temná noc
+      this.timeOfDay = 0.02; // Deep night
     } else if (this.timeOfDay >= 0.88 || this.timeOfDay < 0.2) {
-      this.timeOfDay = 0.26; // Úsvit
+      this.timeOfDay = 0.26; // Dawn
     } else {
-      this.timeOfDay = 0.48; // Den
+      this.timeOfDay = 0.48; // Day
     }
     return `${this.getClockText()} (${this.getPhaseLabel()})`;
   }
@@ -272,17 +261,17 @@ export class EnvironmentSystem {
   }
 
   public getPhaseLabel(): string {
-    const t = this.timeOfDay;
-    if (t >= 0.22 && t < 0.34) return 'Úsvit';
-    if (t >= 0.34 && t < 0.7) {
-      return this.sunIntensity > 0.5 ? 'Slunečný den' : 'Den';
+    const tClock = this.timeOfDay;
+    if (tClock >= 0.22 && tClock < 0.34) return t('phase.dawn');
+    if (tClock >= 0.34 && tClock < 0.7) {
+      return this.sunIntensity > 0.5 ? t('phase.sunny_day') : t('phase.day');
     }
-    if (t >= 0.7 && t < 0.84) return 'Soumrak';
-    return 'Temná noc';
+    if (tClock >= 0.7 && tClock < 0.84) return t('phase.dusk');
+    return t('phase.deep_night');
   }
 
   public getWeatherLabel(): string {
-    return WEATHER_LABELS[this.targetWeather];
+    return getLocalizedWeatherLabel(this.targetWeather);
   }
 
   /**

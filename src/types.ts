@@ -59,6 +59,7 @@ export interface Signpost {
   x: number;
   y: number;
   lines: string[];
+  resolveLines?: () => string[];
 }
 
 export interface WorldLootSpot {
@@ -193,6 +194,7 @@ export interface ActiveStatusEffect {
   staminaRegenBonus?: number;
   walkSpeedMultiplier?: number;
   hpRegenPerSec?: number;
+  sourceItemId?: string;
 }
 
 export type ActiveModal =

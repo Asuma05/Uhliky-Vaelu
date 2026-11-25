@@ -1,5 +1,6 @@
 import type { AudioEngine } from './audio';
 import type { Enemy, EnemyManager } from './enemies';
+import { getItemName, t } from './i18n';
 import {
   CRUDE_COAL_OIL_TEMPLATE,
   LORE_WHITE_RELIQUARY_TEMPLATE,
@@ -274,7 +275,7 @@ export class CombatSystem {
     if (player.isDead || this.attackCooldownTimer > 0) return false;
 
     if (!player.consumeStamina(ATTACK_STAMINA_COST)) {
-      this.spawnFloatingText(player.x, player.y - 3.6, 'Bez výdrže!', '#c29542');
+      this.spawnFloatingText(player.x, player.y - 3.6, t('combat.no_stamina'), '#c29542');
       return false;
     }
 
@@ -346,7 +347,7 @@ export class CombatSystem {
     if (player.isDead || player.isDashing || player.dashCooldown > 0) return false;
 
     if (!player.consumeStamina(DASH_STAMINA_COST)) {
-      this.spawnFloatingText(player.x, player.y - 3.6, 'Bez výdrže!', '#c29542');
+      this.spawnFloatingText(player.x, player.y - 3.6, t('combat.no_stamina'), '#c29542');
       return false;
     }
 
@@ -404,8 +405,8 @@ export class CombatSystem {
 
   private handleEnemyDeath(enemy: Enemy): void {
     this.enemiesDefeated += 1;
-    this.spawnFloatingText(enemy.x, enemy.y - 4.5, `${enemy.name} padl`, '#c94c38');
-    this.onToast(`Porazil jsi: ${enemy.name}`);
+    this.spawnFloatingText(enemy.x, enemy.y - 4.5, t('combat.enemy_fell', { name: enemy.name }), '#c94c38');
+    this.onToast(t('toast.enemy_defeated', { name: enemy.name }));
 
     if (enemy.archetype === 'iron_founder') {
       this.lootDrops.push(
@@ -568,10 +569,10 @@ export class CombatSystem {
         this.audio.playPlayerHurt();
         this.spawnFloatingText(player.x, player.y - 3.8, `-${dealt} HP`, '#df4444');
         if (player.isDead) {
-          this.onToast('Padl jsi v popelu… Stiskni [R] pro návrat k rozcestí.');
+          this.onToast(t('toast.ash_death'));
         }
       } else if (player.isDashing) {
-        this.spawnFloatingText(player.x, player.y - 3.8, 'ÚSKOK!', '#d9c082');
+        this.spawnFloatingText(player.x, player.y - 3.8, t('combat.dodge'), '#d9c082');
       }
     }
 
@@ -590,11 +591,11 @@ export class CombatSystem {
           age: 0,
           duration: 0.85,
           color: '#ff8a3d',
-          label: 'DRTIVÉ KLADIVO!',
+          label: t('combat.boss.hammer_label'),
           damage: sp.damage,
           enemyId: sp.enemy.id,
         });
-        this.spawnFloatingText(sp.x, sp.y - 4.0, 'KLADIVO!', '#ff9b4a');
+        this.spawnFloatingText(sp.x, sp.y - 4.0, t('combat.boss.hammer_short'), '#ff9b4a');
       } else if (sp.kind === 'furnace_nova') {
         this.bossTelegraphs.push({
           id: this.nextTelegraphId++,
@@ -605,11 +606,11 @@ export class CombatSystem {
           age: 0,
           duration: 1.0,
           color: '#ff5c24',
-          label: 'VÝBUCH PECE!',
+          label: t('combat.boss.furnace_nova'),
           damage: sp.damage,
           enemyId: sp.enemy.id,
         });
-        this.spawnFloatingText(sp.x, sp.y - 4.0, 'VÝBUCH PECE!', '#ff6229');
+        this.spawnFloatingText(sp.x, sp.y - 4.0, t('combat.boss.furnace_nova'), '#ff6229');
       } else if (sp.kind === 'poison_mist') {
         this.bossTelegraphs.push({
           id: this.nextTelegraphId++,
@@ -620,12 +621,12 @@ export class CombatSystem {
           age: 0,
           duration: 4.2,
           color: '#62f2a2',
-          label: 'JEDOVATÁ MLHA!',
+          label: t('combat.boss.poison_mist'),
           damage: sp.damage,
           enemyId: sp.enemy.id,
           tickTimer: 0.45,
         });
-        this.spawnFloatingText(sp.enemy.x, sp.enemy.y - 4.0, 'JEDOVATÁ MLHA!', '#62f2a2');
+        this.spawnFloatingText(sp.enemy.x, sp.enemy.y - 4.0, t('combat.boss.poison_mist'), '#62f2a2');
       } else if (sp.kind === 'light_lunge') {
         this.bossTelegraphs.push({
           id: this.nextTelegraphId++,
@@ -639,11 +640,11 @@ export class CombatSystem {
           age: 0,
           duration: 0.65,
           color: '#ffe678',
-          label: 'SVĚTELNÝ VÝPAD!',
+          label: t('combat.boss.light_lunge'),
           damage: sp.damage,
           enemyId: sp.enemy.id,
         });
-        this.spawnFloatingText(sp.x, sp.y - 4.0, 'SVĚTELNÝ VÝPAD!', '#ffe678');
+        this.spawnFloatingText(sp.x, sp.y - 4.0, t('combat.boss.light_lunge'), '#ffe678');
       }
     }
 
@@ -662,8 +663,13 @@ export class CombatSystem {
           inventory.addItem(drop.itemTemplate, drop.quantity);
           player.syncRelicBonuses(inventory);
           this.audio.playLootPickup();
-          this.spawnFloatingText(drop.x, drop.y - 2.2, `+ ${drop.itemTemplate.name}`, drop.color);
-          this.onToast(`Sebráno: ${drop.itemTemplate.name}${drop.quantity > 1 ? ` ×${drop.quantity}` : ''}`);
+          const itemName = getItemName(drop.itemTemplate);
+          this.spawnFloatingText(drop.x, drop.y - 2.2, `+ ${itemName}`, drop.color);
+          this.onToast(
+            drop.quantity > 1
+              ? t('toast.loot_pickup_qty', { name: itemName, qty: drop.quantity })
+              : t('toast.loot_pickup', { name: itemName })
+          );
           this.lootDrops.splice(i, 1);
           this.onProgressEvent?.();
         }
@@ -705,88 +711,93 @@ export class CombatSystem {
 
   private updateBossTelegraphs(dt: number, player: Player, enemies: EnemyManager): void {
     for (let i = this.bossTelegraphs.length - 1; i >= 0; i--) {
-      const t = this.bossTelegraphs[i];
-      t.age += dt;
-      const owner = enemies.enemies.find((e) => e.id === t.enemyId);
-      if (t.kind !== 'poison_mist' && (!owner || !owner.alive)) {
+      const tg = this.bossTelegraphs[i];
+      tg.age += dt;
+      const owner = enemies.enemies.find((e) => e.id === tg.enemyId);
+      if (tg.kind !== 'poison_mist' && (!owner || !owner.alive)) {
         this.bossTelegraphs.splice(i, 1);
         continue;
       }
 
-      if (t.kind === 'poison_mist') {
-        t.tickTimer = (t.tickTimer ?? 0.9) - dt;
-        if (t.tickTimer <= 0) {
-          t.tickTimer = 0.9;
-          if (!player.isDead && Math.hypot(player.x - t.x, player.y - t.y) <= t.radius) {
+      if (tg.kind === 'poison_mist') {
+        tg.tickTimer = (tg.tickTimer ?? 0.9) - dt;
+        if (tg.tickTimer <= 0) {
+          tg.tickTimer = 0.9;
+          if (!player.isDead && Math.hypot(player.x - tg.x, player.y - tg.y) <= tg.radius) {
             const prevHp = player.hp;
-            if (player.takeDamage(t.damage, 0, 0)) {
+            if (player.takeDamage(tg.damage, 0, 0)) {
               const dealt = Math.max(1, Math.round(prevHp - player.hp));
               this.audio.playPlayerHurt();
-              this.spawnFloatingText(player.x, player.y - 3.8, `-${dealt} (Jed)`, '#62f2a2');
+              this.spawnFloatingText(
+                player.x,
+                player.y - 3.8,
+                `-${dealt} (${t('combat.poison')})`,
+                '#62f2a2'
+              );
               if (player.isDead) {
-                this.onToast('Udusila tě alchymistická mlha… Stiskni [R] pro návrat k rozcestí.');
+                this.onToast(t('toast.poison_death'));
               }
             }
           }
         }
-        if (t.age >= t.duration) {
+        if (tg.age >= tg.duration) {
           this.bossTelegraphs.splice(i, 1);
         }
         continue;
       }
 
-      if (!t.resolved && t.age >= t.duration) {
-        t.resolved = true;
-        this.emitSoundWave(t.x, t.y, 'combat', enemies);
+      if (!tg.resolved && tg.age >= tg.duration) {
+        tg.resolved = true;
+        this.emitSoundWave(tg.x, tg.y, 'combat', enemies);
 
-        if (t.kind === 'hammer_slam') {
+        if (tg.kind === 'hammer_slam') {
           this.slashes.push({
-            x: t.x,
-            y: t.y - 0.8,
-            angle: t.angle ?? 0,
+            x: tg.x,
+            y: tg.y - 0.8,
+            angle: tg.angle ?? 0,
             age: 0,
             duration: 0.25,
-            reach: t.radius,
+            reach: tg.radius,
           });
-          const dx = player.x - t.x;
-          const dy = player.y - t.y;
+          const dx = player.x - tg.x;
+          const dy = player.y - tg.y;
           const dist = Math.hypot(dx, dy);
           let hit = dist <= 1.8;
-          if (!hit && dist <= t.radius && dist > 0.01) {
-            const dot = (dx / dist) * Math.cos(t.angle ?? 0) + (dy / dist) * Math.sin(t.angle ?? 0);
-            hit = dot >= Math.cos(t.coneHalfAngle ?? Math.PI * 0.34);
+          if (!hit && dist <= tg.radius && dist > 0.01) {
+            const dot = (dx / dist) * Math.cos(tg.angle ?? 0) + (dy / dist) * Math.sin(tg.angle ?? 0);
+            hit = dot >= Math.cos(tg.coneHalfAngle ?? Math.PI * 0.34);
           }
           if (hit && !player.isDead) {
             const len = Math.max(0.01, dist);
             const prevHp = player.hp;
-            if (player.takeDamage(t.damage, dx / len, dy / len)) {
+            if (player.takeDamage(tg.damage, dx / len, dy / len)) {
               const dealt = Math.max(1, Math.round(prevHp - player.hp));
               this.audio.playPlayerHurt();
               this.spawnFloatingText(player.x, player.y - 3.8, `-${dealt} HP`, '#ff8a3d');
             } else if (player.isDashing) {
-              this.spawnFloatingText(player.x, player.y - 3.8, 'ÚSKOK!', '#d9c082');
+              this.spawnFloatingText(player.x, player.y - 3.8, t('combat.dodge'), '#d9c082');
             }
           }
-        } else if (t.kind === 'furnace_nova') {
-          const dx = player.x - t.x;
-          const dy = player.y - t.y;
+        } else if (tg.kind === 'furnace_nova') {
+          const dx = player.x - tg.x;
+          const dy = player.y - tg.y;
           const dist = Math.hypot(dx, dy);
-          if (dist <= t.radius && !player.isDead) {
+          if (dist <= tg.radius && !player.isDead) {
             const len = Math.max(0.01, dist);
             const prevHp = player.hp;
-            if (player.takeDamage(t.damage, dx / len, dy / len)) {
+            if (player.takeDamage(tg.damage, dx / len, dy / len)) {
               const dealt = Math.max(1, Math.round(prevHp - player.hp));
               this.audio.playPlayerHurt();
               this.spawnFloatingText(player.x, player.y - 3.8, `-${dealt} HP`, '#ff5c24');
             } else if (player.isDashing) {
-              this.spawnFloatingText(player.x, player.y - 3.8, 'ÚSKOK!', '#d9c082');
+              this.spawnFloatingText(player.x, player.y - 3.8, t('combat.dodge'), '#d9c082');
             }
           }
-        } else if (t.kind === 'light_lunge') {
-          const ax = t.x;
-          const ay = t.y;
-          const bx = t.targetX ?? t.x;
-          const by = t.targetY ?? t.y;
+        } else if (tg.kind === 'light_lunge') {
+          const ax = tg.x;
+          const ay = tg.y;
+          const bx = tg.targetX ?? tg.x;
+          const by = tg.targetY ?? tg.y;
           if (owner && owner.alive) {
             owner.x = bx;
             owner.y = by;
@@ -798,21 +809,21 @@ export class CombatSystem {
           const cx = ax + proj * abx;
           const cy = ay + proj * aby;
           const dist = Math.hypot(player.x - cx, player.y - cy);
-          if (dist <= t.radius && !player.isDead) {
+          if (dist <= tg.radius && !player.isDead) {
             const dirLen = Math.max(0.01, Math.hypot(abx, aby));
             const prevHp = player.hp;
-            if (player.takeDamage(t.damage, abx / dirLen, aby / dirLen)) {
+            if (player.takeDamage(tg.damage, abx / dirLen, aby / dirLen)) {
               const dealt = Math.max(1, Math.round(prevHp - player.hp));
               this.audio.playPlayerHurt();
               this.spawnFloatingText(player.x, player.y - 3.8, `-${dealt} HP`, '#ffe678');
             } else if (player.isDashing) {
-              this.spawnFloatingText(player.x, player.y - 3.8, 'ÚSKOK!', '#d9c082');
+              this.spawnFloatingText(player.x, player.y - 3.8, t('combat.dodge'), '#d9c082');
             }
           }
         }
 
         if (player.isDead) {
-          this.onToast('Padl jsi v popelu… Stiskni [R] pro návrat k rozcestí.');
+          this.onToast(t('toast.ash_death'));
         }
         this.bossTelegraphs.splice(i, 1);
       }

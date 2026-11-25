@@ -3,6 +3,14 @@ import { AudioEngine, type AmbientBiomeId, type StepSurface } from './audio';
 import { CombatSystem } from './combat';
 import { EnemyManager } from './enemies';
 import { EnvironmentSystem, normalizeWeatherKind } from './environment';
+import {
+  getLanguage,
+  getPoiName,
+  onLanguageChange,
+  setLanguage,
+  t,
+  type Language,
+} from './i18n';
 import { InputManager } from './input';
 import { Inventory } from './inventory';
 import { LightingSystem } from './lighting';
@@ -28,6 +36,8 @@ declare global {
       startNewGame: (customSeed?: string) => void;
       continueGame: () => void;
       saveGame: () => boolean;
+      getLanguage: () => Language;
+      setLanguage: (lang: Language) => void;
       world: World;
       player: Player;
       inventory: Inventory;
@@ -86,7 +96,7 @@ class Game {
       onContinue: () => this.continueGame(),
       onSaveGame: () => {
         if (this.saveGame()) {
-          this.ui.showToast(`Uloženo (Seed: ${this.world.seed})`);
+          this.ui.showToast(t('toast.saved', { seed: this.world.seed }));
         }
       },
       onQuestAccepted: () => {
@@ -102,6 +112,11 @@ class Game {
       },
     });
     this.combat = this.createCombatSystem();
+
+    onLanguageChange(() => {
+      this.quests.refreshLocalization();
+      this.ui.applyTranslations(this.world.seed);
+    });
 
     this.input = new InputManager(canvas, {
       onUserGesture: () => this.audio.unlock(),
@@ -121,19 +136,19 @@ class Game {
         if (this.player.isDead) return;
         const active = this.player.toggleStealth();
         this.audio.playUiClick(active ? 'close' : 'select');
-        this.ui.showToast(active ? 'Plížení zapnuto (tichý krok)' : 'Plížení vypnuto', 1.8);
+        this.ui.showToast(active ? t('toast.stealth_on') : t('toast.stealth_off'), 1.8);
       },
       onToggleMute: () => {
         const muted = this.audio.toggleMute();
-        this.ui.showToast(muted ? 'Zvuk ztlumen' : 'Zvuk zapnut');
+        this.ui.showToast(muted ? t('toast.muted') : t('toast.unmuted'));
       },
       onCycleTime: () => {
         const label = this.environment.cycleTimeOfDay();
-        this.ui.showToast(`Denní doba: ${label}`);
+        this.ui.showToast(t('toast.time_of_day', { label }));
       },
       onCycleWeather: () => {
         const label = this.environment.cycleWeather();
-        this.ui.showToast(`Počasí: ${label}`);
+        this.ui.showToast(t('toast.weather', { label }));
       },
       onAttack: (aimClientX, aimClientY) => {
         const aimWorld =
@@ -159,7 +174,7 @@ class Game {
           }
           this.lighting.forceShadowcastRefresh();
           this.audio.playUiClick('open');
-          this.ui.showToast('Povstal jsi u startovního útočiště.');
+          this.ui.showToast(t('toast.respawn'));
           this.saveGame();
         }
       },
@@ -179,6 +194,7 @@ class Game {
         if (this.sessionStarted) this.saveGame();
       },
       onMenuNavigate: (delta) => this.ui.navigateMenu(delta),
+      onMenuHorizontal: (delta) => this.ui.handleMenuHorizontal(delta),
       onMenuConfirm: () => this.ui.confirmMenu(),
       isModalOpen: () => this.ui.isPaused(),
       isListModalOpen: () => this.ui.isListModalOpen(),
@@ -287,6 +303,8 @@ class Game {
       startNewGame: (seed?: string) => this.startNewGame(seed),
       continueGame: () => this.continueGame(),
       saveGame: () => this.saveGame(),
+      getLanguage: () => getLanguage(),
+      setLanguage: (lang: Language) => setLanguage(lang),
       world: this.world,
       player: this.player,
       inventory: this.inventory,
@@ -325,7 +343,7 @@ class Game {
     this.ui.rebindSession(this.world, this.inventory, this.player, this.quests);
     this.saveGame();
     this.syncWindowDebugRef();
-    this.ui.showToast(`Nový svět vygenerován · Seed: ${this.world.seed}`, 3.2);
+    this.ui.showToast(t('toast.new_world', { seed: this.world.seed }), 3.2);
   }
 
   public continueGame(): void {
@@ -403,7 +421,7 @@ class Game {
     this.lighting.update(this.world, this.player, this.elapsedTime, this.environment.getAmbientProfile());
     this.ui.rebindSession(this.world, this.inventory, this.player, this.quests);
     this.syncWindowDebugRef();
-    this.ui.showToast(`Načtena hra · Seed: ${this.world.seed}`, 2.8);
+    this.ui.showToast(t('toast.loaded', { seed: this.world.seed }), 2.8);
   }
 
   public saveGame(): boolean {
@@ -511,7 +529,7 @@ class Game {
     if (!this.ui.isPaused()) {
       const moveVec = this.input.getMovementVector();
       const wantsSprint = this.input.isSprintHeld();
-      const zone = this.world.getZoneName(this.player.x, this.player.y);
+      const biome = this.world.getBiomeAt(Math.floor(this.player.x), Math.floor(this.player.y));
       this.player.update(
         moveVec,
         wantsSprint,
@@ -521,7 +539,7 @@ class Game {
           this.audio.playPlayerHurt();
           this.combat.spawnFloatingText(this.player.x, this.player.y - 3.8, `-${dmg} (${label})`, '#ff6338');
           if (this.player.isDead) {
-            this.ui.showToast('Spálila tě láva… Stiskni [R] pro návrat k rozcestí.');
+            this.ui.showToast(t('toast.lava_death'));
           }
         },
         (msg) => {
@@ -534,7 +552,7 @@ class Game {
         this.combat.syncChunkLoot(this.world);
       }
 
-      this.environment.update(dt, zone);
+      this.environment.update(dt, biome);
       const loopAmbient = this.environment.getAmbientProfile();
       this.combat.update(dt, this.world, this.player, this.enemies, this.inventory, {
         nightFactor: loopAmbient.nightFactor,
@@ -605,10 +623,12 @@ class Game {
     const ambient = this.environment.getAmbientProfile();
     return {
       seed: this.world.seed,
-      pois: this.world.getKnownNearPois().map((p) => ({ uid: p.uid, id: p.id, name: p.name, x: p.x, y: p.y })),
+      pois: this.world
+        .getKnownNearPois()
+        .map((p) => ({ uid: p.uid, id: p.id, name: getPoiName(p.id), x: p.x, y: p.y })),
       cities: this.world
         .getImperialCities()
-        .map((c) => ({ uid: c.uid, id: c.id as CityPoiKind, name: c.name, x: c.x, y: c.y })),
+        .map((c) => ({ uid: c.uid, id: c.id as CityPoiKind, name: getPoiName(c.id), x: c.x, y: c.y })),
       player: {
         x: this.player.x,
         y: this.player.y,
