@@ -2,7 +2,7 @@
   "name": "uhliky-vaelu",
   "productName": "Uhliky Vaelu",
   "private": true,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Popelavá louka — Dark Fantasy ASCII RPG",
   "author": "Popelava Louka Studio",
   "type": "module",
@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "dist": "npm version patch --no-git-tag-version && vite build && electron-builder --win portable"
+    "dist": "vite build && electron-builder --win portable"
   },
   "build": {
     "appId": "com.ashenascii.popelavalouka",
