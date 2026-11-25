@@ -2,7 +2,7 @@
   "name": "uhliky-vaelu",
   "productName": "Uhliky Vaelu",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Popelavá louka — Dark Fantasy ASCII RPG",
   "author": "Popelava Louka Studio",
   "type": "module",
